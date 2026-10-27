@@ -1,48 +1,110 @@
-import 'dart:async';
-import 'dart:io';
-
-import 'package:drift/drift.dart';
-import 'package:drift/native.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
-import 'package:sqlite3/sqlite3.dart' as sqlite;
 
 import 'providers.dart';
 
-import 'views/auth/login_view.dart';
-import 'views/auth/license_view.dart';
-import 'views/owner/dashboard_view.dart';
-import 'views/cashier/cashier_view.dart';
-import 'views/owner/user_management_view.dart';
-import 'views/owner/master_data_view.dart';
-import 'views/owner/purchase_view.dart';
-import 'views/reports/report_center_view.dart';
-import 'views/owner/store_settings_view.dart';
-
-// --- Auth state used in KasirinApp ---
-
-final authStateProvider = StateProvider<AuthState>((ref) {
-  final notifier = ref.watch(authNotifierprovider.notifier);
-  return notifier.state;
-});
-
-class KasirinApp extends ConsumerWidget {
+class KasirinApp extends ConsumerStatefulWidget {
   const KasirinApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<KasirinApp> createState() => _KasirinAppState();
+}
+
+class _KasirinAppState extends ConsumerState<KasirinApp> {
+  bool _startupComplete = false;
+
+  @override
+  void initState() {
+    super.initState();
+    Future<void>.delayed(const Duration(milliseconds: 1800), () {
+      if (mounted) setState(() => _startupComplete = true);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = ref.watch(themeProvider);
+    if (!_startupComplete) {
+      return MaterialApp(
+        title: 'Kasirin POS',
+        theme: theme,
+        debugShowCheckedModeBanner: false,
+        home: const _StartupSplash(),
+      );
+    }
+
     final router = ref.watch(routerProvider);
-    final authState = ref.watch(authStateProvider);
     return MaterialApp.router(
       title: 'Kasirin POS',
-      theme: ref.watch(themeProvider),
+      theme: theme,
       routerConfig: router,
-      // Initial routing based on auth state
-      home: authState.isAuthenticated ? const DashboardView() : const LoginView(),
+    );
+  }
+}
+
+class _StartupSplash extends StatefulWidget {
+  const _StartupSplash();
+
+  @override
+  State<_StartupSplash> createState() => _StartupSplashState();
+}
+
+class _StartupSplashState extends State<_StartupSplash>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulseController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+    lowerBound: 0.96,
+    upperBound: 1.0,
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF101827),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ScaleTransition(
+                scale: _pulseController,
+                child: Image.asset(
+                  'AnjaySoft.jpg',
+                  width: 320,
+                  fit: BoxFit.contain,
+                ),
+              ),
+              const SizedBox(height: 32),
+              const SizedBox(
+                width: 150,
+                child: LinearProgressIndicator(
+                  minHeight: 3,
+                  backgroundColor: Color(0xFF334155),
+                  color: Color(0xFF62D8F0),
+                  borderRadius: BorderRadius.all(Radius.circular(4)),
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'Menyiapkan Kasirin...',
+                style: TextStyle(
+                  color: Color(0xFFCBD5E1),
+                  fontSize: 14,
+                  letterSpacing: 0.4,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

@@ -2,197 +2,183 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-class LicenseView extends StatefulWidget {
+import '../../providers.dart';
+
+class LicenseView extends ConsumerStatefulWidget {
   const LicenseView({super.key});
 
   @override
-  State<LicenseView> createState() => _LicenseViewState();
+  ConsumerState<LicenseView> createState() => _LicenseViewState();
 }
 
-class _LicenseViewState extends State<LicenseView> {
-  final _installationIdController = TextEditingController();
-  bool _isLoading = false;
-  String? _licenseStatus;
-  bool _isReadOnly = false;
+class _LicenseViewState extends ConsumerState<LicenseView> {
+  bool _isChecking = false;
+  String _serverStatus = 'Belum diperiksa';
+  bool _isServerHealthy = false;
 
-  @override
-  void dispose() {
-    _installationIdController.dispose();
-    super.dispose();
+  Future<void> _checkServer() async {
+    setState(() => _isChecking = true);
+    try {
+      final client = ref.read(billingClientProvider);
+      final isHealthy = await client.checkServerHealth();
+      setState(() {
+        _isServerHealthy = isHealthy;
+        _serverStatus = isHealthy
+            ? 'Server Billing Online & Terhubung'
+            : 'Server Offline / Tidak Terjangkau (Mode Offline Aktif)';
+      });
+    } catch (_) {
+      setState(() {
+        _isServerHealthy = false;
+        _serverStatus = 'Tidak dapat menghubungi server billing.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isChecking = false);
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF4F6F8),
       appBar: AppBar(
-        title: const Text('Lisensi'),
+        title: const Text('Lisensi & Langganan'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => GoRouter.of(context).go('/login'),
+          onPressed: () => context.go('/'),
         ),
-        actions: [
-          IconButton(
-            icon: Icon(_isReadOnly ? Icons.edit : Icons.preview),
-            tooltip: _isReadOnly ? 'Edit' : 'Read-Only',
-            onPressed: () => setState(() => _isReadOnly = !_isReadOnly),
-          ),
-        ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Card(
-              elevation: 2,
-              color: _licenseStatus == null
-                  ? Colors.grey.shade50
-                  : (_licenseStatus == 'active' ? Colors.green.shade50 : Colors.red.shade50),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Row(
-                  children: [
-                    Icon(
-                      _licenseStatus == null ? Icons.help_outline : (_licenseStatus == 'trial' ? Icons.timer : Icons.verified_user),
-                      size: 36,
-                      color: _licenseStatus == null ? Colors.grey : (_licenseStatus == 'trial' ? Colors.orange : Colors.green),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _licenseStatus?.capitalize ?? 'Tidak Aktif',
-                            style: theme.textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: _licenseStatus == null ? Colors.grey.shade700 : Colors.blue,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Card(
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: const BorderSide(color: Color(0xFFD7DEE5)),
+                  ),
+                  color: Colors.white,
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF18794E)
+                                    .withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(
+                                Icons.verified_user_rounded,
+                                color: Color(0xFF18794E),
+                                size: 28,
+                              ),
                             ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: const [
+                                  Text(
+                                    'Status: Versi Uji Coba (Trial)',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF17212B),
+                                    ),
+                                  ),
+                                  Text(
+                                    'Masa berlaku trial 7 hari aktif',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Color(0xFF18794E),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        const Divider(color: Color(0xFFD7DEE5)),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Aplikasi Kasirin POS berjalan dalam mode offline-first. Transaksi kasir, produk, dan laporan lokal tersimpan aman di perangkat Anda tanpa membutuhkan koneksi internet konstan.',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Color(0xFF586575),
+                            height: 1.5,
                           ),
-                          if (_licenseStatus != null) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              'Aplikasi dalam ${_licenseStatus == 'trial' ? 'mode uji coba' : 'inaktiv'}',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: theme.textTheme.bodyMedium!.color!.withValues(alpha: 0.7),
-                              ),
-                            ),
-                          ] else
-                            Text(
-                              'Login untuk mengaktifkan lisensi',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: theme.textTheme.bodyMedium!.color!.withValues(alpha: 0.7),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 32),
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.blue.shade200),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.key, color: Colors.blue.shade700, size: 18),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Masukkan ID Instalasi',
-                        style: theme.textTheme.labelLarge,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _installationIdController,
-                    decoration: InputDecoration(
-                      hintText: 'Masukkan ID instalasi kamu',
-                      prefixIcon: Icon(Icons.key_outlined, color: Colors.blue.shade700),
-                      border: OutlineInputBorder(),
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _isLoading ? null : () => _activate(context),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-              child: _isLoading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Aktifkan', style: TextStyle(fontSize: 16)),
-            ),
-            const SizedBox(height: 32),
-            Card(
-              elevation: 2,
-              color: Colors.orange.shade50,
-              child: ListTile(
-                leading: Icon(Icons.lightbulb_outline, color: Colors.orange.shade700),
-                title: const Text('Mode Uji Coba'),
-                subtitle: Text(
-                  'Aktivasi lisensi perpanjangan atau pengujian fungsi di titik penjualan.',
-                  style: TextStyle(fontSize: 13, color: Colors.orange.shade700),
                 ),
-              ),
+                const SizedBox(height: 16),
+                Card(
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: const BorderSide(color: Color(0xFFD7DEE5)),
+                  ),
+                  color: Colors.white,
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Koneksi Server Billing',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF17212B),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Status: $_serverStatus',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: _isServerHealthy
+                                ? const Color(0xFF18794E)
+                                : const Color(0xFF586575),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        OutlinedButton.icon(
+                          onPressed: _isChecking ? null : _checkServer,
+                          icon: _isChecking
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.wifi_tethering),
+                          label: const Text('Uji Sambungan Server'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
-  }
-
-  Future<void> _activate(BuildContext context) async {
-    final installationId = _installationIdController.text.trim();
-    if (installationId.isEmpty) return;
-
-    setState(() {
-      _isLoading = true;
-      _licenseStatus = null;
-    });
-
-    try {
-      setState(() => _licenseStatus = 'trial');
-
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Lisensi uji coba aktif')),
-        );
-        GoRouter.of(context).go('/');
-      }
-    } finally {
-      if (context.mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-}
-
-extension Capitalize on String {
-  String get capitalize {
-    if (isEmpty) return this;
-    return '${this[0].toUpperCase()}${this.substring(1)}';
   }
 }

@@ -294,4 +294,40 @@ void main() {
       90,
     );
   });
+
+  test('shift closing, user management, and dashboard stats work', () async {
+    final ownerId = await repository.createOwner(
+      username: 'owner2',
+      fullName: 'Owner Two',
+      password: 'password-rahasia',
+    );
+    await repository.createStore('Toko Dua');
+    final shiftId = await repository.openShift(
+      cashierId: ownerId,
+      openingCash: 50000,
+    );
+    expect(shiftId, isNotNull);
+
+    await repository.closeShift(
+      shiftId: shiftId!,
+      cashierId: ownerId,
+      closingCash: 75000,
+    );
+    expect(await repository.openShiftFor(ownerId), isNull);
+
+    final cashierId = await repository.addUser(
+      username: 'kasir1',
+      fullName: 'Kasir Satu',
+      password: 'password-kasir',
+      role: 'CASHIER',
+    );
+    expect(cashierId, isPositive);
+
+    final users = await repository.getUsers();
+    expect(users.length, 2);
+
+    final stats = await repository.getDashboardStats();
+    expect(stats['productCount'], 0);
+    expect(stats['activeShifts'], 0);
+  });
 }

@@ -2,43 +2,66 @@
 
 Flutter/Dart POS client for Android and iOS. POS data is stored in a separate app-private SQLite database on each device. There is no transaction synchronization with the desktop app or billing server.
 
-## Toolchain
+## Toolchain & Versions
 
-- Flutter stable 3.47.8 and Dart 3.13.7 are the current verified versions.
-- Android Studio and Android SDK are required for Android builds. Configure Android SDK command-line tools, platform-tools, build-tools, and accept normal SDK licenses before building.
-- iOS simulator/device builds require macOS and Xcode. This Windows workspace has not built or signed iOS.
-- Android application ID: `com.kasirin.kasirin_mobile`; minimum SDK: 23. Release signing is intentionally not configured with repository secrets.
+- Flutter stable 3.24+ / 3.27+ with Dart 3.5+
+- Android Gradle Plugin (AGP): `8.7.0`
+- Gradle: `8.9` (via `gradle/wrapper/gradle-wrapper.properties`)
+- Kotlin: `2.0.21`
+- Minimum Android SDK: `23` (`minSdk = 23`)
+- Application ID: `com.kasirin.kasirin_mobile`
 
-## Local Development
+## Local Development & Build Commands
 
-From this directory:
+From `android/kasirin_mobile/`:
 
 ```powershell
 flutter pub get
-dart format lib test
 flutter analyze
 flutter test
+flutter run
 flutter build apk --debug
 ```
 
-The current Windows environment has Flutter at `C:\src\flutter`, but it is not on PATH. Use `C:\src\flutter\bin\flutter.bat` and `C:\src\flutter\bin\dart.bat`, or add the SDK's `bin` directory to the user PATH. The detected Android SDK currently lacks `cmdline-tools`; install that component through Android Studio's SDK Manager or the official Android command-line tools distribution, then rerun `flutter doctor -v`.
+Or using the convenience script at `android/start_flutter1.ps1`.
 
-Drift is currently implemented with explicit SQL statements in `lib/data/local_database.dart`; no build_runner generation step is configured. The database is at the application-support path as `kasirin.db`. Schema version is 1. Do not ship schema changes without ordered, non-destructive migrations and upgrade tests.
+## App Architecture & UI Overview
 
-## Current App Flows
+1. **Inisialisasi & Setup Toko (`/setup`)**:
+   - Jika database baru/kosong (`setupRequired == true`), diarahkan otomatis ke setup OWNER tanpa data demo.
+   - Mengisi Nama Lengkap, Username, Nama Toko, Password, dan Konfirmasi Password.
+   - Membuat toko default `MAIN`, roles bawaan (`OWNER`, `ADMIN`, `SUPERVISOR`, `CASHIER`), dan akun pemilik utama.
 
-- Fresh database presents OWNER/store setup with no demo records.
-- Local login, inactive-user rejection, failed-login count/lockout, and login history are repository-backed. Existing desktop Argon2 password hashes are not compatible with the mobile PBKDF2 format; importing desktop users is not supported.
-- OWNER/ADMIN/SUPERVISOR see the responsive overview, cashier, product list, and additional-features status. CASHIER is routed directly to cashier and cannot open the overview/product route through app navigation.
-- Product search supports name, SKU, and barcode text (including keyboard-wedge scanner input). Product creation supports SKU, name, cost/selling price, and initial/minimum stock.
-- A cashier can open a shift, add products to a cart, see repository-calculated tier prices, accept cash, and save the sale locally. Sale, lines, payment, stock movement, journal and audit writes are transactional and invoice-key retries are idempotent.
-- Cashier UI currently supports cash only; shift close, discounts, customer selection, receipt printing/sharing and refunds are not implemented.
+2. **Autentikasi Lokal (`/login`)**:
+   - Validasi username dan password menggunakan PBKDF2 hash yang aman.
+   - Fitur proteksi: penolakan user nonaktif, pembatasan 5x percobaan gagal (lockout 15 menit), dan pencatatan histori login.
+   - Role-based routing: Akun `CASHIER` langsung diarahkan ke layar kasir (`/cashier`).
 
-See [desktop-parity-matrix.md](docs/desktop-parity-matrix.md) and [database-parity.md](docs/database-parity.md) for the implementation status and gaps.
+3. **Kasir POS (`/cashier`)**:
+   - Manajemen shift (Buka shift dengan modal awal kas, tutup shift dengan kas akhir).
+   - Katalog produk real-time dengan pencarian cepat nama, SKU, dan barcode.
+   - Keranjang belanja interaktif dengan pengaturan quantity stepper (+ / -), subtotal, dan perhitungan harga grosir bertingkat (bulk price rules).
+   - Checkout tunai (Cash) dengan nominal cepat (Uang Pas, pecahan uang), validasi kembalian, transaksi atomic SQLite (sale, items, payment, stock movement, balanced double-entry journal, audit log), dan struk transaksi.
 
-## Platform and Security Boundaries
+4. **Dashboard Utama (`/`)**:
+   - Ringkasan statistik operasional: Omzet penjualan hari ini, total produk aktif, dan status shift.
+   - Navigasi touch-first cepat ke Kasir, Master Data, Laporan, Karyawan, Belanja, Pengaturan, dan Lisensi.
 
-- Billing dependencies are not yet wired to the existing `billing_server`. Configure no production endpoint or credentials in this app until the server DTO/auth contract is audited and platform-aware licensing is implemented.
-- No billing customer token, device token, signing key, payment secret, or production credential is bundled. POS transactions remain local and work without network access.
-- Camera, printer, document export, backup, and hardware adapters have not been implemented or device-tested.
-- Final iOS archive/IPA build and signing can only be verified on macOS with Xcode.
+5. **Master Data Produk (`/master-data`)**:
+   - Daftar produk dengan status stok dan indikator stok menipis.
+   - Tambah produk baru (SKU, barcode, nama, harga beli, harga jual, stok awal, stok minimum).
+   - Nonaktifkan/hapus produk.
+
+6. **Manajemen Karyawan (`/user-management`)**:
+   - Daftar staf dan hak akses (OWNER, ADMIN, SUPERVISOR, CASHIER).
+   - Dialog pendaftaran karyawan baru dengan validasi username unik dan password hash.
+
+7. **Pusat Laporan & Keuangan (`/report-center`)**:
+   - Ringkasan omzet, total transaksi harian, dan daftar riwayat faktur penjualan terbaru.
+   - Peringatan stok menipis (low stock alerts).
+
+8. **Pengaturan Toko (`/store-settings`)**:
+   - Ubah nama toko, slogan, alamat, dan nomor WhatsApp.
+
+9. **Lisensi & Aktivasi (`/license`)**:
+   - Status lisensi trial/aktif, identifikasi perangkat, dan uji konektivitas ke billing server.

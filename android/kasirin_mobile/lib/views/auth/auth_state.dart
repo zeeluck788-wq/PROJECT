@@ -9,30 +9,36 @@ class AuthState {
   final String? fullName;
   final String? role;
 
-  const AuthState._({
-    required this.type,
-    this.userId,
-    this.username,
-    this.fullName,
-    this.role,
-  });
-
   const AuthState.unauthenticated()
-      : type = AuthStateType.unauthenticated,
-        userId = null,
-        username = null,
-        fullName = null,
-        role = null;
+    : type = AuthStateType.unauthenticated,
+      userId = null,
+      username = null,
+      fullName = null,
+      role = null;
 
-  AuthState.authenticated({
-    required this.userId,
-    required this.username,
-    required this.fullName,
-    required this.role,
-  }) : type = AuthStateType.authenticated;
+  const AuthState.authenticated({
+    required int userId,
+    required String username,
+    required String fullName,
+    required String role,
+  }) : type = AuthStateType.authenticated,
+       userId = userId,
+       username = username,
+       fullName = fullName,
+       role = role;
 
   bool get isAuthenticated => type == AuthStateType.authenticated;
+
   bool get isOwner => role == 'OWNER' || role == 'owner';
+
+  bool get isCashier => role == 'CASHIER' || role == 'cashier';
+
+  bool get canAccessManagement =>
+      role == 'OWNER' || role == 'ADMIN' || role == 'SUPERVISOR';
+
+  bool get isAdmin => role == 'ADMIN' || role == 'admin';
+
+  bool get isSupervisor => role == 'SUPERVISOR' || role == 'supervisor';
 }
 
 class AuthNotifier extends Notifier<AuthState> {

@@ -1,9 +1,6 @@
-import 'package:drift/drift.dart';
-import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
-import 'package:sqlite3/sqlite3.dart' as sqlite;
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import 'data/local_database.dart';
 import 'domain/password_hasher.dart';
@@ -11,27 +8,31 @@ import 'domain/pos_repository.dart';
 import 'services/billing_client.dart';
 import 'services/billing_config.dart';
 import 'views/auth/auth_state.dart';
+import 'views/auth/login_view.dart';
+import 'views/auth/license_view.dart';
+import 'views/auth/setup_owner_view.dart';
+import 'views/owner/dashboard_view.dart';
+import 'views/cashier/cashier_view.dart';
+import 'views/owner/user_management_view.dart';
+import 'views/owner/master_data_view.dart';
+import 'views/owner/special_prices_view.dart';
+import 'views/owner/purchase_view.dart';
+import 'views/reports/report_center_view.dart';
+import 'views/owner/store_settings_view.dart';
 
 // --- Riverpod providers ---
 
 final databaseProvider = FutureProvider<KasirinDatabase>((ref) async {
-  final directory = await getApplicationSupportDirectory();
-  final db = KasirinDatabase(
-    NativeDatabase.createInBackground(
-      File(p.join(directory.path, 'kasirin.db')),
-      setup: _configureSqlite,
-    ),
-  );
-  await db.customSelect('SELECT 1').get();
+  final db = await openKasirinDatabase();
+  ref.onDispose(db.close);
   return db;
 });
 
 final passwordHasherProvider = Provider<PasswordHasher>((ref) => PasswordHasher());
 
-final posRepositoryProvider = Provider<PosRepository>((ref) {
-  final databaseAsync = ref.watch(databaseProvider);
-  final passwordHasher = ref.read(passwordHasherProvider);
-  return PosRepository(databaseAsync.requireValue, passwordHasher);
+final repositoryFutureProvider = FutureProvider<PosRepository>((ref) async {
+  final database = await ref.watch(databaseProvider.future);
+  return PosRepository(database, ref.read(passwordHasherProvider));
 });
 
 final billingConfigProvider = Provider<BillingConfig>((ref) {
@@ -42,12 +43,12 @@ final billingConfigProvider = Provider<BillingConfig>((ref) {
 });
 
 final billingClientProvider = Provider<BillingClient>((ref) {
-  return BillingClient();
+  return BillingClient(ref.watch(billingConfigProvider));
 });
 
 // --- Auth ---
 
-final authNotifierprovider = NotifierProvider<AuthNotifier, AuthState>(() {
+final authNotifierProvider = NotifierProvider<AuthNotifier, AuthState>(() {
   return AuthNotifier();
 });
 
@@ -93,18 +94,24 @@ final themeProvider = Provider((ref) => ThemeData(
 // --- GoRouter ---
 
 final routerProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authNotifierprovider);
+  final authState = ref.watch(authNotifierProvider);
   return GoRouter(
     initialLocation: authState.isAuthenticated ? '/' : '/login',
     redirect: (context, state) {
-      final authState = ref.read(authNotifierprovider);
-      if (!authState.isAuthenticated) {
+      final authState = ref.read(authNotifierProvider);
+      if (!authState.isAuthenticated &&
+          state.matchedLocation != '/login' &&
+          state.matchedLocation != '/setup') {
         return '/login';
       }
       return null;
     },
     routes: [
       GoRoute(path: '/login', builder: (context, state) => const LoginView()),
+      GoRoute(
+        path: '/setup',
+        builder: (context, state) => const SetupOwnerView(),
+      ),
       GoRoute(path: '/license', builder: (context, state) => const LicenseView()),
       GoRoute(
         path: '/',
@@ -116,6 +123,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const UserManagementView(),
           ),
           GoRoute(path: 'master-data', builder: (context, state) => const MasterDataView()),
+          GoRoute(
+            path: 'special-prices',
+            builder: (context, state) => const SpecialPricesView(),
+          ),
           GoRoute(path: 'purchase', builder: (context, state) => const PurchaseView()),
           GoRoute(
             path: 'report-center',
@@ -130,9 +141,3 @@ final routerProvider = Provider<GoRouter>((ref) {
     ),
   );
 });
-
-void _configureSqlite(sqlite.Database database) {
-  database.execute('PRAGMA foreign_keys = ON');
-  database.execute('PRAGMA journal_mode = WAL');
-  database.execute('PRAGMA busy_timeout = 5000');
-}

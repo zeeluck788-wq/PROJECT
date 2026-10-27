@@ -7,15 +7,7 @@ import 'package:kasirin_mobile/domain/pos_repository.dart';
 import 'billing_config.dart' as config;
 
 class BillingClient {
-  BillingClient._internal() : 
-    _billingConfig = config.BillingConfig(
-      baseUrl: 'http://localhost:8000', 
-      apiPrefix: '',
-    );
-
-  static final BillingClient _instance = BillingClient._internal();
-
-  factory BillingClient() => _instance;
+  BillingClient(this._billingConfig);
 
   final config.BillingConfig _billingConfig;
 
