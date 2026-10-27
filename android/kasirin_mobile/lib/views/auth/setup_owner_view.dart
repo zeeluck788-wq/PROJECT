@@ -21,6 +21,7 @@ class _SetupOwnerViewState extends ConsumerState<SetupOwnerView> {
 
   bool _isPasswordVisible = false;
   bool _isLoading = false;
+  bool _includeDemoData = true;
   String? _errorMessage;
 
   @override
@@ -59,6 +60,16 @@ class _SetupOwnerViewState extends ConsumerState<SetupOwnerView> {
             : _storeNameController.text.trim(),
       );
 
+      String? demoDataError;
+      if (_includeDemoData) {
+        try {
+          await repository.seedDemoData(ownerId);
+        } catch (error) {
+          // Keep first-run setup usable if demo records cannot be added.
+          demoDataError = error.toString().replaceFirst('StateError: ', '');
+        }
+      }
+
       // Log in immediately
       ref.read(authNotifierProvider.notifier).setAuthenticated(
             userId: ownerId,
@@ -69,9 +80,15 @@ class _SetupOwnerViewState extends ConsumerState<SetupOwnerView> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Akun Pemilik berhasil dibuat! Selamat datang di Kasirin.'),
-            backgroundColor: Color(0xFF18794E),
+          SnackBar(
+            content: Text(demoDataError == null
+                ? (_includeDemoData
+                    ? 'Akun dan data demo berhasil dibuat. Kasir demo: kasir_demo / kasir123.'
+                    : 'Akun Pemilik berhasil dibuat! Selamat datang di Kasirin.')
+                : 'Akun dibuat, tetapi data demo gagal dimuat: $demoDataError'),
+            backgroundColor: demoDataError == null
+                ? const Color(0xFF18794E)
+                : const Color(0xFFB42318),
           ),
         );
         context.go('/');
@@ -95,6 +112,7 @@ class _SetupOwnerViewState extends ConsumerState<SetupOwnerView> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6F8),
+      appBar: AppBar(title: const Text('Setup Toko & Akun Pemilik')),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -274,6 +292,21 @@ class _SetupOwnerViewState extends ConsumerState<SetupOwnerView> {
                             }
                             return null;
                           },
+                        ),
+                        const SizedBox(height: 8),
+                        CheckboxListTile(
+                          contentPadding: EdgeInsets.zero,
+                          value: _includeDemoData,
+                          controlAffinity: ListTileControlAffinity.leading,
+                          title: const Text('Isi data contoh untuk mencoba fitur'),
+                          subtitle: const Text(
+                            'Produk, stok rendah, pembelian, harga grosir, dan transaksi penjualan.',
+                          ),
+                          onChanged: _isLoading
+                              ? null
+                              : (value) => setState(
+                                    () => _includeDemoData = value ?? false,
+                                  ),
                         ),
                         const SizedBox(height: 28),
                         SizedBox(

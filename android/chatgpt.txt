@@ -1,0 +1,67 @@
+Dari output terminal yang kamu kirim sebelumnya, sebenarnya isi `SETTINGS GRADLE` berhasil ditampilkan dan menggunakan sintaks Kotlin DSL (`val`, `id(...)`). Kemungkinan file tersebut bernama `android/settings.gradle`, bukan `android/settings.gradle.kts`, atau perintah `cat` menampilkan file `.kts` yang ada pada saat itu. Kita pastikan dulu nama file yang benar.
+
+## 1. Cari file konfigurasi Gradle
+
+Jalankan dari direktori utama proyek Flutter:
+
+```
+ls -la android/
+```
+
+Lalu jalankan:
+
+```
+find android -maxdepth 2 -type f \
+  \( -name "settings.gradle" -o -name "settings.gradle.kts" \)
+```
+
+## 2. Edit file yang memang ada
+
+Jika hasilnya:
+
+`android/settings.gradle`
+
+Buka dengan:
+
+```
+nano android/settings.gradle
+```
+
+Jika hasilnya:
+
+`android/settings.gradle.kts`
+
+Buka dengan:
+
+```
+nano android/settings.gradle.kts
+```
+
+Berdasarkan output sebelumnya, cari baris berikut:
+
+```
+id("com.android.application") version "8.7.0" apply false
+id("org.jetbrains.kotlin.android") version "2.0.21" apply false
+```
+
+Ubah menjadi:
+
+```
+id("com.android.application") version "8.11.1" apply false
+id("org.jetbrains.kotlin.android") version "2.2.20" apply false
+```
+
+Pertahankan baris plugin Flutter dan konfigurasi lainnya.
+
+## 3. Periksa kembali
+
+```
+flutter analyze --suggestions
+```
+
+Jangan membuat file `settings.gradle.kts` baru jika proyekmu sudah menggunakan `settings.gradle`.
+
+
+test flutter:
+un -d 10DC9N0EN500095
+flutter run -d 10DC9N0EN500095 --no-resident

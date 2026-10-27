@@ -17,15 +17,11 @@ class AuthState {
       role = null;
 
   const AuthState.authenticated({
-    required int userId,
-    required String username,
-    required String fullName,
-    required String role,
-  }) : type = AuthStateType.authenticated,
-       userId = userId,
-       username = username,
-       fullName = fullName,
-       role = role;
+    required this.userId,
+    required this.username,
+    required this.fullName,
+    required this.role,
+  }) : type = AuthStateType.authenticated;
 
   bool get isAuthenticated => type == AuthStateType.authenticated;
 

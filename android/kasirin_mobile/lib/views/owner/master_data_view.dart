@@ -16,8 +16,11 @@ class MasterDataView extends ConsumerStatefulWidget {
 
 class _MasterDataViewState extends ConsumerState<MasterDataView> {
   final _searchController = TextEditingController();
-  final _rupiahFormat =
-      NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
+  final _rupiahFormat = NumberFormat.currency(
+    locale: 'id_ID',
+    symbol: 'Rp ',
+    decimalDigits: 0,
+  );
 
   List<QueryRow> _products = [];
   bool _isLoading = true;
@@ -77,8 +80,9 @@ class _MasterDataViewState extends ConsumerState<MasterDataView> {
               const SizedBox(height: 12),
               TextField(
                 controller: barcodeController,
-                decoration:
-                    const InputDecoration(labelText: 'Barcode (Opsional)'),
+                decoration: const InputDecoration(
+                  labelText: 'Barcode (Opsional)',
+                ),
               ),
               const SizedBox(height: 12),
               TextField(
@@ -126,8 +130,9 @@ class _MasterDataViewState extends ConsumerState<MasterDataView> {
                     child: TextField(
                       controller: minStockController,
                       keyboardType: TextInputType.number,
-                      decoration:
-                          const InputDecoration(labelText: 'Stok Minimum'),
+                      decoration: const InputDecoration(
+                        labelText: 'Stok Minimum',
+                      ),
                     ),
                   ),
                 ],
@@ -166,7 +171,9 @@ class _MasterDataViewState extends ConsumerState<MasterDataView> {
       if (sku.isEmpty || name.isEmpty || sellingPrice <= 0) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('SKU, Nama, dan Harga Jual wajib diisi dengan benar.'),
+            content: Text(
+              'SKU, Nama, dan Harga Jual wajib diisi dengan benar.',
+            ),
             backgroundColor: Color(0xFFB42318),
           ),
         );
@@ -239,9 +246,8 @@ class _MasterDataViewState extends ConsumerState<MasterDataView> {
         _refresh();
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error: $e')),
-          );
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text('Error: $e')));
         }
       }
     }
@@ -251,31 +257,28 @@ class _MasterDataViewState extends ConsumerState<MasterDataView> {
   Widget build(BuildContext context) {
     final visibleProducts = _tab == 1
         ? _products
-            .where((product) =>
-                product.read<int>('stock_qty') <= product.read<int>('min_stock'))
-            .toList()
+              .where(
+                (product) =>
+                    product.read<int>('stock_qty') <=
+                    product.read<int>('min_stock'),
+              )
+              .toList()
         : _products;
     return OwnerScaffold(
       title: 'Produk & Stok',
       onBack: () => context.go('/'),
-      actions: [
-          IconButton(
-            icon: const Icon(Icons.add_circle_outline),
-            tooltip: 'Tambah Produk',
-            onPressed: _showAddProductDialog,
-          ),
-      ],
+      onAdd: _tab == 0
+          ? _showAddProductDialog
+          : () => context.go('/purchase?newOrder=true&tab=supplier'),
+      addLabel: _tab == 1 ? 'Belanja' : 'Tambah produk',
       body: Column(
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
-            child: SegmentedButton<int>(
-              segments: const [
-                ButtonSegment(value: 0, label: Text('Semua produk')),
-                ButtonSegment(value: 1, label: Text('Stok rendah')),
-              ],
-              selected: {_tab},
-              onSelectionChanged: (value) => setState(() => _tab = value.first),
+            child: OwnerTabBar<int>(
+              tabs: const [(0, 'Semua produk'), (1, 'Stok rendah')],
+              selected: _tab,
+              onSelected: (value) => setState(() => _tab = value),
             ),
           ),
           Padding(
@@ -306,153 +309,102 @@ class _MasterDataViewState extends ConsumerState<MasterDataView> {
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : visibleProducts.isEmpty
-                    ? OwnerEmptyState(
-                        icon: Icons.inventory_2_outlined,
-                        title: _tab == 1
-                            ? 'Stok aman'
-                            : _searchQuery.isEmpty
-                            ? 'Katalog masih kosong'
-                            : 'Produk tidak ditemukan',
-                        message: _tab == 1
-                            ? 'Tidak ada produk yang mencapai batas stok minimum.'
-                            : _searchQuery.isEmpty
-                            ? 'Tambahkan produk pertama untuk mulai mengelola harga dan stok.'
-                            : 'Coba kata kunci atau SKU yang berbeda.',
-                        action: _tab == 0 && _searchQuery.isEmpty
-                            ? FilledButton.icon(
-                                onPressed: _showAddProductDialog,
-                                icon: const Icon(Icons.add_rounded),
-                                label: const Text('Tambah produk'),
-                              )
-                            : null,
-                      )
-                    : ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(20, 4, 20, 100),
-                        itemCount: visibleProducts.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 10),
-                        itemBuilder: (context, index) {
-                          final product = visibleProducts[index];
-                          final name = product.read<String>('name');
-                          final sku = product.read<String>('sku');
-                          final barcode =
-                              product.read<String?>('barcode') ?? '-';
-                          final sellingPrice =
-                              product.read<int>('selling_price');
-                          final purchasePrice =
-                              product.read<int>('purchase_price');
+                ? OwnerEmptyState(
+                    icon: Icons.inventory_2_outlined,
+                    title: _tab == 1
+                        ? 'Stok aman'
+                        : _searchQuery.isEmpty
+                        ? 'Katalog masih kosong'
+                        : 'Produk tidak ditemukan',
+                    message: _tab == 1
+                        ? 'Tidak ada produk yang mencapai batas stok minimum.'
+                        : _searchQuery.isEmpty
+                        ? 'Tambahkan produk pertama untuk mulai mengelola harga dan stok.'
+                        : 'Coba kata kunci atau SKU yang berbeda.',
+                  )
+                : SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 100),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: DataTable(
+                        headingRowColor: WidgetStateProperty.all(
+                          const Color(0xFFEAF1F6),
+                        ),
+                        columns: [
+                          DataColumn(label: Text('Produk')),
+                          DataColumn(label: Text('SKU / Barcode')),
+                          DataColumn(label: Text('Modal'), numeric: true),
+                          DataColumn(label: Text('Harga jual'), numeric: true),
+                          DataColumn(
+                            label: Text(_tab == 1 ? 'Stok' : 'Stok / Min'),
+                            numeric: true,
+                          ),
+                          DataColumn(label: Text('Aksi')),
+                        ],
+                        rows: visibleProducts.map((product) {
                           final stock = product.read<int>('stock_qty');
                           final minStock = product.read<int>('min_stock');
-
-                          return OwnerSurface(
-                              padding: const EdgeInsets.all(16),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                  Container(
-                                    width: 48,
-                                    height: 48,
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF006EAE)
-                                          .withValues(alpha: 0.1),
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    child: const Icon(
-                                      Icons.inventory_2_outlined,
-                                      color: Color(0xFF006EAE),
-                                    ),
+                          return DataRow(
+                            cells: [
+                              DataCell(
+                                SizedBox(
+                                  width: 170,
+                                  child: Text(
+                                    product.read<String>('name'),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          name,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 15,
-                                            color: Color(0xFF17212B),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          'SKU $sku  ·  Barcode $barcode',
-                                          style: const TextStyle(
-                                            fontSize: 12,
-                                            color: ownerMuted,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  IconButton(
-                                    tooltip: 'Nonaktifkan produk',
-                                    icon: const Icon(Icons.more_horiz_rounded),
-                                    onPressed: () => _deleteProduct(product),
-                                  ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 14),
-                                  Wrap(
-                                    spacing: 8,
-                                    runSpacing: 8,
-                                    crossAxisAlignment: WrapCrossAlignment.center,
-                                    children: [
-                                      _ProductTag(
-                                        icon: Icons.sell_outlined,
-                                        label: _rupiahFormat.format(sellingPrice),
-                                        foreground: ownerBlue,
-                                      ),
-                                      _ProductTag(
-                                        icon: Icons.shopping_bag_outlined,
-                                        label: 'Modal ${_rupiahFormat.format(purchasePrice)}',
-                                        foreground: ownerMuted,
-                                      ),
-                                      _ProductTag(
-                                        icon: Icons.inventory_2_outlined,
-                                        label: '$stock tersedia',
-                                        foreground: stock <= minStock
-                                            ? const Color(0xFFB42318)
-                                            : const Color(0xFF18794E),
-                                      ),
-                                    ],
-                                  ),
-                                ],
+                                ),
                               ),
+                              DataCell(
+                                SizedBox(
+                                  width: 150,
+                                  child: Text(
+                                    '${product.read<String>('sku')}\n${product.read<String?>('barcode') ?? '-'}',
+                                  ),
+                                ),
+                              ),
+                              DataCell(
+                                Text(
+                                  _rupiahFormat.format(
+                                    product.read<int>('purchase_price'),
+                                  ),
+                                ),
+                              ),
+                              DataCell(
+                                Text(
+                                  _rupiahFormat.format(
+                                    product.read<int>('selling_price'),
+                                  ),
+                                ),
+                              ),
+                              DataCell(
+                                Text(
+                                  _tab == 1 ? '$stock' : '$stock / $minStock',
+                                  style: TextStyle(
+                                    color: stock <= minStock
+                                        ? const Color(0xFFB42318)
+                                        : const Color(0xFF18794E),
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              DataCell(
+                                IconButton(
+                                  tooltip: 'Nonaktifkan produk',
+                                  icon: const Icon(Icons.delete_outline),
+                                  onPressed: () => _deleteProduct(product),
+                                ),
+                              ),
+                            ],
                           );
-                        },
+                        }).toList(),
                       ),
+                    ),
+                  ),
           ),
         ],
       ),
     );
   }
 }
-
-class _ProductTag extends StatelessWidget {
-  const _ProductTag({required this.icon, required this.label, required this.foreground});
-
-  final IconData icon;
-  final String label;
-  final Color foreground;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-        decoration: BoxDecoration(
-          color: foreground.withValues(alpha: .08),
-          borderRadius: BorderRadius.circular(9),
-        ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 14, color: foreground),
-          const SizedBox(width: 6),
-          Text(label, style: TextStyle(color: foreground, fontSize: 12, fontWeight: FontWeight.w600)),
-        ]),
-      );
-}
-

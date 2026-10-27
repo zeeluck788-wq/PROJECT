@@ -28,7 +28,9 @@ final databaseProvider = FutureProvider<KasirinDatabase>((ref) async {
   return db;
 });
 
-final passwordHasherProvider = Provider<PasswordHasher>((ref) => PasswordHasher());
+final passwordHasherProvider = Provider<PasswordHasher>(
+  (ref) => PasswordHasher(),
+);
 
 final repositoryFutureProvider = FutureProvider<PosRepository>((ref) async {
   final database = await ref.watch(databaseProvider.future);
@@ -54,42 +56,44 @@ final authNotifierProvider = NotifierProvider<AuthNotifier, AuthState>(() {
 
 // --- Theme ---
 
-final themeProvider = Provider((ref) => ThemeData(
-  primarySwatch: Colors.blue,
-  useMaterial3: true,
-  scaffoldBackgroundColor: Colors.white,
-  textTheme: const TextTheme(
-    displayLarge: TextStyle(
-      fontSize: 32,
-      fontWeight: FontWeight.bold,
-      color: Colors.black87,
+final themeProvider = Provider(
+  (ref) => ThemeData(
+    primarySwatch: Colors.blue,
+    useMaterial3: true,
+    scaffoldBackgroundColor: Colors.white,
+    textTheme: const TextTheme(
+      displayLarge: TextStyle(
+        fontSize: 32,
+        fontWeight: FontWeight.bold,
+        color: Colors.black87,
+      ),
+      titleLarge: TextStyle(
+        fontSize: 24,
+        fontWeight: FontWeight.w600,
+        color: Colors.black87,
+      ),
+      bodyLarge: TextStyle(fontSize: 16, color: Colors.black87),
+      bodyMedium: TextStyle(fontSize: 14, color: Colors.black87),
+      labelLarge: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
     ),
-    titleLarge: TextStyle(
-      fontSize: 24,
-      fontWeight: FontWeight.w600,
-      color: Colors.black87,
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: Colors.grey.shade100,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: BorderSide(color: Colors.grey.shade300),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: BorderSide(color: Colors.blue, width: 2),
+      ),
     ),
-    bodyLarge: TextStyle(fontSize: 16, color: Colors.black87),
-    bodyMedium: TextStyle(fontSize: 14, color: Colors.black87),
-    labelLarge: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
   ),
-  inputDecorationTheme: InputDecorationTheme(
-    filled: true,
-    fillColor: Colors.grey.shade100,
-    border: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(8),
-      borderSide: BorderSide.none,
-    ),
-    enabledBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(8),
-      borderSide: BorderSide(color: Colors.grey.shade300),
-    ),
-    focusedBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(8),
-      borderSide: BorderSide(color: Colors.blue, width: 2),
-    ),
-  ),
-));
+);
 
 // --- GoRouter ---
 
@@ -104,6 +108,20 @@ final routerProvider = Provider<GoRouter>((ref) {
           state.matchedLocation != '/setup') {
         return '/login';
       }
+      if (authState.isAuthenticated &&
+          authState.isCashier &&
+          state.matchedLocation != '/cashier') {
+        return '/cashier';
+      }
+      if (authState.isAuthenticated &&
+          !authState.isCashier &&
+          state.matchedLocation == '/cashier' &&
+          !authState.isOwner) {
+        return '/';
+      }
+      if (authState.isAuthenticated && state.matchedLocation == '/login') {
+        return '/';
+      }
       return null;
     },
     routes: [
@@ -112,31 +130,53 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/setup',
         builder: (context, state) => const SetupOwnerView(),
       ),
-      GoRoute(path: '/license', builder: (context, state) => const LicenseView()),
+      GoRoute(
+        path: '/license',
+        builder: (context, state) => const LicenseView(),
+      ),
       GoRoute(
         path: '/',
         builder: (context, state) => const DashboardView(),
         routes: [
-          GoRoute(path: 'cashier', builder: (context, state) => const CashierView()),
+          GoRoute(
+            path: 'cashier',
+            builder: (context, state) => const CashierView(),
+          ),
           GoRoute(
             path: 'user-management',
             builder: (context, state) => const UserManagementView(),
           ),
-          GoRoute(path: 'master-data', builder: (context, state) => const MasterDataView()),
+          GoRoute(
+            path: 'master-data',
+            builder: (context, state) => const MasterDataView(),
+          ),
           GoRoute(
             path: 'special-prices',
             builder: (context, state) => const SpecialPricesView(),
           ),
-          GoRoute(path: 'purchase', builder: (context, state) => const PurchaseView()),
+          GoRoute(
+            path: 'purchase',
+            builder: (context, state) => PurchaseView(
+              openNewOrderOnLoad:
+                  state.uri.queryParameters['newOrder'] == 'true',
+              initialTab: state.uri.queryParameters['tab'] == 'supplier'
+                  ? 1
+                  : 0,
+            ),
+          ),
           GoRoute(
             path: 'report-center',
             builder: (context, state) => const ReportCenterView(),
           ),
-          GoRoute(path: 'store-settings', builder: (context, state) => const StoreSettingsView()),
+          GoRoute(
+            path: 'store-settings',
+            builder: (context, state) => const StoreSettingsView(),
+          ),
         ],
       ),
     ],
     errorBuilder: (context, state) => Scaffold(
+      appBar: AppBar(title: const Text('Halaman tidak ditemukan')),
       body: Center(child: Text('Halaman tidak ditemukan: ${state.error}')),
     ),
   );

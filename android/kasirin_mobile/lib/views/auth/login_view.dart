@@ -113,9 +113,10 @@ class _LoginViewState extends ConsumerState<LoginView> {
   @override
   Widget build(BuildContext context) {
     if (_checkingSetup) {
-      return const Scaffold(
+      return Scaffold(
         backgroundColor: Color(0xFFF4F6F8),
-        body: Center(
+        appBar: AppBar(title: const Text('Memuat akun')),
+        body: const Center(
           child: CircularProgressIndicator(color: Color(0xFF006EAE)),
         ),
       );
@@ -125,6 +126,7 @@ class _LoginViewState extends ConsumerState<LoginView> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6F8),
+      appBar: AppBar(title: const Text('Masuk Kasirin')),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(

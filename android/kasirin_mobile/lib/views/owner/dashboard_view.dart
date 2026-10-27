@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -14,10 +16,14 @@ class DashboardView extends ConsumerStatefulWidget {
 }
 
 class _DashboardViewState extends ConsumerState<DashboardView> {
-  final _rupiahFormat =
-      NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
+  final _rupiahFormat = NumberFormat.currency(
+    locale: 'id_ID',
+    symbol: 'Rp ',
+    decimalDigits: 0,
+  );
 
   bool _isLoading = true;
+  bool _isSeedingDemo = false;
   Map<String, dynamic> _stats = {
     'productCount': 0,
     'todaySales': 0,
@@ -26,6 +32,8 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
     'lowStockCount': 0,
   };
   String _storeName = 'Toko Kasirin';
+  String? _storeLogoPath;
+  String? _storeBannerPath;
 
   @override
   void initState() {
@@ -44,6 +52,8 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
           _stats = stats;
           if (store != null) {
             _storeName = store.read<String>('name');
+            _storeLogoPath = store.read<String?>('logo_path');
+            _storeBannerPath = store.read<String?>('banner_path');
           }
         });
       }
@@ -55,18 +65,74 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
     }
   }
 
+  Future<void> _loadDemoData() async {
+    final userId = ref.read(authNotifierProvider).userId;
+    if (userId == null || _isSeedingDemo) return;
+    setState(() => _isSeedingDemo = true);
+    try {
+      final repository = await ref.read(repositoryFutureProvider.future);
+      await repository.seedDemoData(userId);
+      await _loadDashboardData();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Data demo berhasil ditambahkan ke database perangkat ini.',
+            ),
+            backgroundColor: Color(0xFF18794E),
+          ),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Data demo gagal dimuat: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSeedingDemo = false);
+    }
+  }
+
+  Future<void> _confirmLogout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Keluar dari dashboard?'),
+        content: const Text(
+          'Anda akan kembali ke layar login dan perlu memasukkan username serta kata sandi untuk masuk lagi.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Tetap di dashboard'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Keluar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      await ref.read(authNotifierProvider.notifier).logout();
+      if (mounted) context.go('/login');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authNotifierProvider);
 
     final menuItems = [
-      _DashboardMenuItem(
-        title: 'Kasir POS',
-        subtitle: 'Mulai transaksi penjualan',
-        icon: Icons.point_of_sale_rounded,
-        color: const Color(0xFF006EAE),
-        route: '/cashier',
-      ),
+      if (authState.isOwner)
+        _DashboardMenuItem(
+          title: 'Kasir POS',
+          subtitle: 'Mulai transaksi penjualan',
+          icon: Icons.point_of_sale_rounded,
+          color: const Color(0xFF006EAE),
+          route: '/cashier',
+        ),
       _DashboardMenuItem(
         title: 'Produk & Stok',
         subtitle: 'Kelola katalog, harga, dan persediaan',
@@ -96,8 +162,8 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
         route: '/user-management',
       ),
       _DashboardMenuItem(
-        title: 'Pembelian',
-        subtitle: 'Pesanan barang dan supplier',
+        title: 'Belanja',
+        subtitle: 'Belanja barang dan kelola supplier',
         icon: Icons.local_shipping_rounded,
         color: const Color(0xFF288A75),
         route: '/purchase',
@@ -123,13 +189,29 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
         CircleAvatar(
           radius: 28,
           backgroundColor: ownerBlue.withValues(alpha: .1),
-          child: const Icon(Icons.person_rounded, size: 30, color: ownerBlue),
+          backgroundImage: _storeLogoPath == null
+              ? null
+              : FileImage(File(_storeLogoPath!)),
+          child: _storeLogoPath == null
+              ? const Icon(Icons.person_rounded, size: 30, color: ownerBlue)
+              : null,
         ),
         const SizedBox(width: 14),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Text(
+                _storeName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: ownerBlue,
+                ),
+              ),
+              const SizedBox(height: 2),
               Text(
                 authState.fullName ?? 'Pemilik Toko',
                 maxLines: 1,
@@ -144,7 +226,10 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
                     decoration: BoxDecoration(
                       color: ownerBlue.withValues(alpha: .08),
                       borderRadius: BorderRadius.circular(7),
@@ -179,289 +264,414 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
       icon: const Icon(Icons.point_of_sale_rounded, size: 18),
       label: const Text('Buka Kasir'),
     );
+    final ownerCard = OwnerSurface(
+      padding: EdgeInsets.zero,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Stack(
+          children: [
+            if (_storeBannerPath != null)
+              Positioned.fill(
+                child: Image.file(
+                  File(_storeBannerPath!),
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                ),
+              ),
+            const Positioned.fill(child: ColoredBox(color: Color(0x26000000))),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: .74),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: LayoutBuilder(
+                  builder: (context, constraints) => constraints.maxWidth < 520
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            ownerIdentity,
+                            if (authState.isOwner) ...[
+                              const SizedBox(height: 16),
+                              cashierAction,
+                            ],
+                          ],
+                        )
+                      : Row(
+                          children: [
+                            Expanded(child: ownerIdentity),
+                            if (authState.isOwner) ...[
+                              const SizedBox(width: 20),
+                              cashierAction,
+                            ],
+                          ],
+                        ),
+                ),
+              ),
+            ),
+            if (authState.isOwner)
+              Positioned(
+                top: 3,
+                right: 3,
+                child: IconButton(
+                  tooltip: 'Edit identitas toko',
+                  onPressed: () => context.go('/store-settings'),
+                  icon: const Icon(Icons.edit_outlined, size: 19),
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.white.withValues(alpha: .92),
+                    foregroundColor: ownerBlue,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
 
-    return Scaffold(
-      backgroundColor: ownerCanvas,
-      drawer: Drawer(
-        child: SafeArea(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
-                child: Row(
-                  children: [
-                    const CircleAvatar(
-                      backgroundColor: Color(0xFFE7F2F9),
-                      foregroundColor: ownerBlue,
-                      child: Icon(Icons.storefront_rounded),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(_storeName,
+    return PopScope<Object?>(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _confirmLogout();
+          });
+        }
+      },
+      child: Scaffold(
+        backgroundColor: ownerCanvas,
+        drawer: Drawer(
+          child: SafeArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+                  child: Row(
+                    children: [
+                      const CircleAvatar(
+                        backgroundColor: Color(0xFFE7F2F9),
+                        foregroundColor: ownerBlue,
+                        child: Icon(Icons.storefront_rounded),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _storeName,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                  fontWeight: FontWeight.w700, fontSize: 16)),
-                          Text(authState.fullName ?? 'Pemilik Toko',
+                                fontWeight: FontWeight.w700,
+                                fontSize: 16,
+                              ),
+                            ),
+                            Text(
+                              authState.fullName ?? 'Pemilik Toko',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(color: ownerMuted, fontSize: 13)),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1),
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  children: [
-                    for (final item in menuItems)
-                      ListTile(
-                        leading: Icon(item.icon, color: item.color),
-                        title: Text(item.title),
-                        subtitle: Text(item.subtitle),
-                        onTap: () {
-                          Navigator.of(context).pop();
-                          context.go(item.route);
-                        },
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-      appBar: AppBar(
-        title: Text(
-          _storeName,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Segarkan',
-            onPressed: _loadDashboardData,
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'Keluar',
-            onPressed: () async {
-              final confirmed = await showDialog<bool>(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Keluar dari Aplikasi?'),
-                  content: const Text(
-                      'Anda perlu memasukkan username & password kembali untuk masuk.'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: const Text('Batal'),
-                    ),
-                    ElevatedButton(
-                      onPressed: () => Navigator.pop(context, true),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFB42318),
-                        foregroundColor: Colors.white,
-                      ),
-                      child: const Text('Keluar'),
-                    ),
-                  ],
-                ),
-              );
-
-              if (confirmed == true && context.mounted) {
-                await ref.read(authNotifierProvider.notifier).logout();
-                if (context.mounted) context.go('/login');
-              }
-            },
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1120),
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Greeting Card
-                  OwnerSurface(
-                    child: LayoutBuilder(
-                      builder: (context, constraints) => constraints.maxWidth < 520
-                          ? Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                ownerIdentity,
-                                const SizedBox(height: 16),
-                                cashierAction,
-                              ],
-                            )
-                          : Row(
-                              children: [
-                                Expanded(child: ownerIdentity),
-                                const SizedBox(width: 20),
-                                cashierAction,
-                              ],
-                            ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  // Stat Cards
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      final width = constraints.maxWidth < 560
-                          ? constraints.maxWidth
-                          : (constraints.maxWidth - 24) / 3;
-                      return Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
-                        children: [
-                      SizedBox(
-                        width: width,
-                        child: _StatCard(
-                          title: 'Penjualan Hari Ini',
-                          value: _rupiahFormat
-                              .format(_stats['todaySales'] ?? 0),
-                          icon: Icons.payments_rounded,
-                          color: const Color(0xFF18794E),
-                        ),
-                      ),
-                      SizedBox(
-                        width: width,
-                        child: _StatCard(
-                          title: 'Total Produk',
-                          value: '${_stats['productCount'] ?? 0}',
-                          icon: Icons.inventory_2_rounded,
-                          color: const Color(0xFF006EAE),
-                        ),
-                      ),
-                      SizedBox(
-                        width: width,
-                        child: _StatCard(
-                          title: 'Shift Aktif',
-                          value: '${_stats['activeShifts'] ?? 0}',
-                          icon: Icons.timer_rounded,
-                          color: const Color(0xFF9A6700),
-                        ),
-                      ),
-                        ],
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 28),
-                  const OwnerSectionHeading(
-                    title: 'Menu Operasional',
-                    subtitle: 'Semua kebutuhan toko, dalam satu tempat.',
-                  ),
-                  const SizedBox(height: 16),
-                  // Menu Grid
-                  GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                      maxCrossAxisExtent: 360,
-                      mainAxisExtent: 148,
-                      mainAxisSpacing: 14,
-                      crossAxisSpacing: 14,
-                    ),
-                    itemCount: menuItems.length,
-                    itemBuilder: (context, index) {
-                      final item = menuItems[index];
-
-                      return Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: ownerBorder),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Color(0x080F172A),
-                              blurRadius: 18,
-                              offset: Offset(0, 5),
+                              style: const TextStyle(
+                                color: ownerMuted,
+                                fontSize: 13,
+                              ),
                             ),
                           ],
                         ),
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(18),
-                            onTap: () => context.go(item.route),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 58,
-                                    height: 58,
-                                    decoration: BoxDecoration(
-                                      color: item.color.withValues(alpha: .09),
-                                      borderRadius: BorderRadius.circular(18),
-                                    ),
-                                    child: Icon(item.icon, color: item.color, size: 29),
-                                  ),
-                                  const SizedBox(width: 14),
-                                  Expanded(
-                                    child: Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    children: [
+                      for (final item in menuItems)
+                        ListTile(
+                          leading: Icon(item.icon, color: item.color),
+                          title: Text(item.title),
+                          subtitle: Text(item.subtitle),
+                          onTap: () {
+                            Navigator.of(context).pop();
+                            context.go(item.route);
+                          },
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        appBar: AppBar(
+          title: const Text(
+            'Dashboard',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+          ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              tooltip: 'Segarkan',
+              onPressed: _loadDashboardData,
+            ),
+            IconButton(
+              icon: const Icon(Icons.logout),
+              tooltip: 'Keluar ke login',
+              onPressed: _confirmLogout,
+            ),
+            const SizedBox(width: 8),
+          ],
+        ),
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : Column(
+                children: [
+                  Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1120),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                        child: ownerCard,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 1120),
+                          child: Padding(
+                            padding: const EdgeInsets.all(20),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 20),
+                                // Stat Cards
+                                LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    final width = constraints.maxWidth < 560
+                                        ? constraints.maxWidth
+                                        : (constraints.maxWidth - 24) / 3;
+                                    return Wrap(
+                                      spacing: 12,
+                                      runSpacing: 12,
                                       children: [
-                                        Text(
-                                          item.title,
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            height: 1.2,
-                                            fontWeight: FontWeight.w700,
-                                            color: ownerInk,
+                                        SizedBox(
+                                          width: width,
+                                          child: _StatCard(
+                                            title: 'Penjualan Hari Ini',
+                                            value: _rupiahFormat.format(
+                                              _stats['todaySales'] ?? 0,
+                                            ),
+                                            icon: Icons.payments_rounded,
+                                            color: const Color(0xFF18794E),
                                           ),
                                         ),
-                                        const SizedBox(height: 6),
-                                        Text(
-                                          item.subtitle,
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontSize: 12,
-                                            height: 1.3,
-                                            color: ownerMuted,
+                                        SizedBox(
+                                          width: width,
+                                          child: _StatCard(
+                                            title: 'Total Produk',
+                                            value:
+                                                '${_stats['productCount'] ?? 0}',
+                                            icon: Icons.inventory_2_rounded,
+                                            color: const Color(0xFF006EAE),
                                           ),
+                                        ),
+                                        SizedBox(
+                                          width: width,
+                                          child: _StatCard(
+                                            title: 'Shift Aktif',
+                                            value:
+                                                '${_stats['activeShifts'] ?? 0}',
+                                            icon: Icons.timer_rounded,
+                                            color: const Color(0xFF9A6700),
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  },
+                                ),
+                                const SizedBox(height: 28),
+                                if (authState.isOwner &&
+                                    _stats['demoDataPresent'] != true) ...[
+                                  OwnerSurface(
+                                    child: Row(
+                                      children: [
+                                        const Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                'Coba dengan data contoh',
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.w700,
+                                                  color: ownerInk,
+                                                ),
+                                              ),
+                                              SizedBox(height: 4),
+                                              Text(
+                                                'Isi produk, pembelian, stok, dan transaksi ke database lokal Android ini.',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: ownerMuted,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        FilledButton(
+                                          onPressed: _isSeedingDemo
+                                              ? null
+                                              : _loadDemoData,
+                                          child: _isSeedingDemo
+                                              ? const SizedBox(
+                                                  width: 18,
+                                                  height: 18,
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                        strokeWidth: 2,
+                                                      ),
+                                                )
+                                              : const Text('Muat data demo'),
                                         ),
                                       ],
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
-                                  Icon(
-                                    Icons.arrow_forward_rounded,
-                                    size: 19,
-                                    color: item.color.withValues(alpha: .75),
-                                  ),
+                                  const SizedBox(height: 28),
                                 ],
-                              ),
+                                const OwnerSectionHeading(
+                                  title: 'Menu Operasional',
+                                  subtitle: 'Semua kebutuhan toko, dalam satu tempat.',
+                                ),
+                                const SizedBox(height: 16),
+                                // Menu Grid
+                                GridView.builder(
+                                  shrinkWrap: true,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  gridDelegate:
+                                      const SliverGridDelegateWithMaxCrossAxisExtent(
+                                        maxCrossAxisExtent: 360,
+                                        mainAxisExtent: 148,
+                                        mainAxisSpacing: 14,
+                                        crossAxisSpacing: 14,
+                                      ),
+                                  itemCount: menuItems.length,
+                                  itemBuilder: (context, index) {
+                                    final item = menuItems[index];
+
+                                    return Container(
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(18),
+                                        border: Border.all(color: ownerBorder),
+                                        boxShadow: const [
+                                          BoxShadow(
+                                            color: Color(0x080F172A),
+                                            blurRadius: 18,
+                                            offset: Offset(0, 5),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Material(
+                                        color: Colors.transparent,
+                                        child: InkWell(
+                                          borderRadius: BorderRadius.circular(
+                                            18,
+                                          ),
+                                          onTap: () => context.go(item.route),
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 16,
+                                              vertical: 14,
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                Container(
+                                                  width: 58,
+                                                  height: 58,
+                                                  decoration: BoxDecoration(
+                                                    color: item.color
+                                                        .withValues(alpha: .09),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          18,
+                                                        ),
+                                                  ),
+                                                  child: Icon(
+                                                    item.icon,
+                                                    color: item.color,
+                                                    size: 29,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 14),
+                                                Expanded(
+                                                  child: Column(
+                                                    mainAxisAlignment:
+                                                        MainAxisAlignment
+                                                            .center,
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    children: [
+                                                      Text(
+                                                        item.title,
+                                                        maxLines: 2,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                        style: const TextStyle(
+                                                          fontSize: 16,
+                                                          height: 1.2,
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                          color: ownerInk,
+                                                        ),
+                                                      ),
+                                                      const SizedBox(height: 6),
+                                                      Text(
+                                                        item.subtitle,
+                                                        maxLines: 2,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                        style: const TextStyle(
+                                                          fontSize: 12,
+                                                          height: 1.3,
+                                                          color: ownerMuted,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Icon(
+                                                  Icons.arrow_forward_rounded,
+                                                  size: 19,
+                                                  color: item.color.withValues(
+                                                    alpha: .75,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ],
                             ),
                           ),
                         ),
-                      );
-                    },
-                  ),
-                ],
+                      ),
                     ),
                   ),
-                ),
+                ],
               ),
-            ),
+      ),
     );
   }
 }
@@ -500,39 +710,39 @@ class _StatCard extends StatelessWidget {
     return OwnerSurface(
       padding: const EdgeInsets.all(16),
       child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, color: color, size: 20),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF586575),
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: color, size: 20),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF586575),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            FittedBox(
-              alignment: Alignment.centerLeft,
-              fit: BoxFit.scaleDown,
-              child: Text(
-                value,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: color,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          FittedBox(
+            alignment: Alignment.centerLeft,
+            fit: BoxFit.scaleDown,
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
             ),
-      ],
+          ),
+        ],
       ),
     );
   }

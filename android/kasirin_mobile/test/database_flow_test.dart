@@ -2,8 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:kasirin_mobile/data/local_database.dart';
 import 'package:kasirin_mobile/domain/password_hasher.dart';
-import 'package:kasirin_mobile/domain/pos_repository.dart';
-import 'package:kasirin_mobile/domain/pos_repository.dart' show CartItemInput;
+import 'package:kasirin_mobile/domain/pos_repository.dart'
+    show PosRepository, CartItemInput;
 
 class _TestPasswordHasher extends PasswordHasher {
   @override
@@ -26,10 +26,15 @@ void main() {
 
   tearDown(() async => database.close());
 
-  test('Database initialization creates schema and enables foreign keys', () async {
-    final pragmaResult = await database.customSelect('PRAGMA foreign_keys').get();
-    expect(pragmaResult.isEmpty, isFalse);
-  });
+  test(
+    'Database initialization creates schema and enables foreign keys',
+    () async {
+      final pragmaResult = await database
+          .customSelect('PRAGMA foreign_keys')
+          .get();
+      expect(pragmaResult.isEmpty, isFalse);
+    },
+  );
 
   test('Database is ready for CRUD operations', () async {
     expect(await repository.setupRequired(), isTrue);
@@ -87,10 +92,7 @@ void main() {
     );
 
     await repository.createStore('Rollback Store');
-    final shiftId = await repository.openShift(
-      cashierId: 1,
-      openingCash: 0,
-    );
+    final shiftId = await repository.openShift(cashierId: 1, openingCash: 0);
 
     await expectLater(
       repository.checkout(
@@ -105,7 +107,10 @@ void main() {
     );
 
     final afterRollbackProducts = await repository.products();
-    expect(afterRollbackProducts.any((p) => p.read<int>('id') == productId), isTrue);
+    expect(
+      afterRollbackProducts.any((p) => p.read<int>('id') == productId),
+      isTrue,
+    );
     expect(await repository.openShiftFor(1), isNotNull);
   });
 

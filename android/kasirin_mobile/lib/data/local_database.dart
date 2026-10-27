@@ -53,6 +53,7 @@ const _schemaStatements = <String>[
     address TEXT,
     whatsapp TEXT,
     logo_path TEXT,
+    banner_path TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     deleted_at TEXT
@@ -147,6 +148,9 @@ const _schemaStatements = <String>[
     quantity_threshold INTEGER NOT NULL CHECK(quantity_threshold >= 1),
     discount_percent NUMERIC(5, 2) NOT NULL CHECK(discount_percent > 0 AND discount_percent <= 100),
     special_price INTEGER NOT NULL DEFAULT 0 CHECK(special_price >= 0),
+    quantity_multiplier INTEGER NOT NULL DEFAULT 2 CHECK(quantity_multiplier >= 2),
+    multiple_special_price INTEGER NOT NULL DEFAULT 0 CHECK(multiple_special_price >= 0),
+    multiple_quantity_threshold INTEGER NOT NULL DEFAULT 0 CHECK(multiple_quantity_threshold >= 0),
     pricing_mode TEXT NOT NULL DEFAULT 'PERCENT' CHECK(pricing_mode IN ('PRICE', 'PERCENT')),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -432,7 +436,7 @@ class KasirinDatabase extends GeneratedDatabase {
       KasirinDatabase(NativeDatabase.memory(setup: _configureSqlite));
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 4;
 
   @override
   Iterable<TableInfo<Table, Object?>> get allTables => const [];
@@ -452,6 +456,25 @@ class KasirinDatabase extends GeneratedDatabase {
         for (final statement in _schemaStatements) {
           await customStatement(statement);
         }
+      }
+      if (from >= 1 && from < 2 && to >= 2) {
+        await customStatement(
+          'ALTER TABLE bulk_price_rules ADD COLUMN quantity_multiplier INTEGER NOT NULL DEFAULT 2 CHECK(quantity_multiplier >= 2)',
+        );
+        await customStatement(
+          'ALTER TABLE bulk_price_rules ADD COLUMN multiple_special_price INTEGER NOT NULL DEFAULT 0 CHECK(multiple_special_price >= 0)',
+        );
+      }
+      if (from >= 1 && from < 3 && to >= 3) {
+        await customStatement('ALTER TABLE stores ADD COLUMN banner_path TEXT');
+      }
+      if (from >= 1 && from < 4 && to >= 4) {
+        await customStatement(
+          'ALTER TABLE bulk_price_rules ADD COLUMN multiple_quantity_threshold INTEGER NOT NULL DEFAULT 0 CHECK(multiple_quantity_threshold >= 0)',
+        );
+        await customStatement(
+          'UPDATE bulk_price_rules SET multiple_quantity_threshold = quantity_threshold * quantity_multiplier WHERE multiple_special_price > 0',
+        );
       }
     },
     beforeOpen: (details) async {

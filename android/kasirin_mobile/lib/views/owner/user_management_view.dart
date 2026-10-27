@@ -19,7 +19,11 @@ class _UserManagementViewState extends ConsumerState<UserManagementView> {
   List<QueryRow> _shifts = [];
   bool _isLoading = true;
   int _tab = 0;
-  final _currency = NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
+  final _currency = NumberFormat.currency(
+    locale: 'id_ID',
+    symbol: 'Rp ',
+    decimalDigits: 0,
+  );
 
   @override
   void initState() {
@@ -47,131 +51,302 @@ class _UserManagementViewState extends ConsumerState<UserManagementView> {
     }
   }
 
-  Future<void> _showAddUserDialog() async {
-    final usernameController = TextEditingController();
-    final fullNameController = TextEditingController();
-    final whatsappController = TextEditingController();
+  Future<void> _showUserDialog({QueryRow? user}) async {
+    final editing = user != null;
+    final formKey = GlobalKey<FormState>();
+    final usernameController = TextEditingController(
+      text: user?.read<String>('username') ?? '',
+    );
+    final fullNameController = TextEditingController(
+      text: user?.read<String>('full_name') ?? '',
+    );
+    final whatsappController = TextEditingController(
+      text: user?.read<String?>('whatsapp') ?? '',
+    );
     final passwordController = TextEditingController();
-    String selectedRole = 'CASHIER';
+    String selectedRole = user?.read<String>('role_name') ?? 'CASHIER';
 
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Tambah Karyawan Baru'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: usernameController,
-                  decoration: const InputDecoration(labelText: 'Username *'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: fullNameController,
-                  decoration: const InputDecoration(labelText: 'Nama Lengkap *'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: whatsappController,
-                  keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(
-                    labelText: 'WhatsApp (Opsional)',
-                    hintText: '081234567890',
+    try {
+      final result = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: Text(
+              editing ? 'Ubah Akun Pengguna' : 'Tambah Akun Pengguna',
+            ),
+            content: SingleChildScrollView(
+              child: SizedBox(
+                width: 420,
+                child: Form(
+                  key: formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextFormField(
+                        controller: fullNameController,
+                        textCapitalization: TextCapitalization.words,
+                        decoration: const InputDecoration(
+                          labelText: 'Nama lengkap *',
+                        ),
+                        validator: (value) =>
+                            value == null || value.trim().isEmpty
+                            ? 'Nama lengkap wajib diisi.'
+                            : null,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: usernameController,
+                        textInputAction: TextInputAction.next,
+                        decoration: const InputDecoration(
+                          labelText: 'Username untuk login *',
+                        ),
+                        validator: (value) =>
+                            value == null || value.trim().isEmpty
+                            ? 'Username wajib diisi.'
+                            : null,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: whatsappController,
+                        keyboardType: TextInputType.phone,
+                        decoration: const InputDecoration(
+                          labelText: 'Nomor WhatsApp (opsional)',
+                          hintText: '081234567890',
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        initialValue: selectedRole,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Jabatan / hak akses',
+                        ),
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'CASHIER',
+                            child: Text('Kasir'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'ADMIN',
+                            child: Text('Manajer'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'SUPERVISOR',
+                            child: Text('Supervisor Umum'),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          if (value != null) {
+                            setDialogState(() => selectedRole = value);
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: passwordController,
+                        obscureText: true,
+                        decoration: InputDecoration(
+                          labelText: editing
+                              ? 'Kata sandi baru (opsional)'
+                              : 'Kata sandi *',
+                          helperText: editing
+                              ? 'Kosongkan jika tidak ingin mengubah kata sandi.'
+                              : 'Minimal 8 karakter.',
+                        ),
+                        validator: (value) {
+                          if (!editing && (value == null || value.length < 8)) {
+                            return 'Kata sandi minimal 8 karakter.';
+                          }
+                          if (editing &&
+                              value != null &&
+                              value.isNotEmpty &&
+                              value.length < 8) {
+                            return 'Kata sandi minimal 8 karakter.';
+                          }
+                          return null;
+                        },
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: selectedRole,
-                  decoration: const InputDecoration(labelText: 'Role / Hak Akses'),
-                  items: const [
-                    DropdownMenuItem(value: 'CASHIER', child: Text('CASHIER (Kasir)')),
-                    DropdownMenuItem(value: 'SUPERVISOR', child: Text('SUPERVISOR (Pengawas)')),
-                    DropdownMenuItem(value: 'ADMIN', child: Text('ADMIN (Administrator)')),
-                  ],
-                  onChanged: (val) {
-                    if (val != null) {
-                      setDialogState(() => selectedRole = val);
-                    }
-                  },
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: passwordController,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Password *',
-                    hintText: 'Minimal 6 karakter',
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Batal'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF006EAE),
-                foregroundColor: Colors.white,
               ),
-              child: const Text('Simpan'),
             ),
-          ],
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Batal'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  if (formKey.currentState!.validate()) {
+                    Navigator.pop(dialogContext, true);
+                  }
+                },
+                child: Text(editing ? 'Simpan perubahan' : 'Buat akun'),
+              ),
+            ],
+          ),
         ),
+      );
+      if (result != true || !mounted) return;
+
+      final repository = await ref.read(repositoryFutureProvider.future);
+      if (editing) {
+        await repository.updateUser(
+          userId: user.read<int>('id'),
+          username: usernameController.text,
+          fullName: fullNameController.text,
+          role: selectedRole,
+          whatsapp: whatsappController.text,
+          newPassword: passwordController.text,
+        );
+      } else {
+        await repository.addUser(
+          username: usernameController.text,
+          fullName: fullNameController.text,
+          password: passwordController.text,
+          role: selectedRole,
+          whatsapp: whatsappController.text,
+        );
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              editing
+                  ? 'Perubahan akun berhasil disimpan.'
+                  : 'Akun pengguna berhasil dibuat.',
+            ),
+            backgroundColor: const Color(0xFF18794E),
+          ),
+        );
+        await _loadUsers();
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error.toString().replaceFirst('StateError: ', '')),
+            backgroundColor: const Color(0xFFB42318),
+          ),
+        );
+      }
+    } finally {
+      usernameController.dispose();
+      fullNameController.dispose();
+      whatsappController.dispose();
+      passwordController.dispose();
+    }
+  }
+
+  Future<void> _setUserActive(QueryRow user, bool active) async {
+    final auth = ref.read(authNotifierProvider);
+    final userId = user.read<int>('id');
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(active ? 'Aktifkan akun?' : 'Nonaktifkan akun?'),
+        content: Text(
+          active
+              ? 'Pengguna ${user.read<String>('full_name')} dapat login kembali.'
+              : 'Pengguna ${user.read<String>('full_name')} tidak dapat login sampai akun diaktifkan kembali.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(active ? 'Aktifkan' : 'Nonaktifkan'),
+          ),
+        ],
       ),
     );
-
-    if (result == true && mounted) {
-      final username = usernameController.text.trim();
-      final fullName = fullNameController.text.trim();
-      final whatsapp = whatsappController.text.trim();
-      final password = passwordController.text;
-
-      if (username.isEmpty || fullName.isEmpty || password.length < 6) {
+    if (confirmed != true || !mounted) return;
+    try {
+      if (auth.userId == null) throw StateError('Sesi pemilik sudah berakhir.');
+      final repository = await ref.read(repositoryFutureProvider.future);
+      await repository.setUserActive(
+        userId: userId,
+        actorId: auth.userId!,
+        active: active,
+      );
+      await _loadUsers();
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Semua field bertanda * wajib diisi.'),
-            backgroundColor: Color(0xFFB42318),
+          SnackBar(
+            content: Text(
+              active
+                  ? 'Akun berhasil diaktifkan.'
+                  : 'Akun berhasil dinonaktifkan.',
+            ),
           ),
         );
-        return;
       }
-
-      try {
-        final repository = await ref.read(repositoryFutureProvider.future);
-        await repository.addUser(
-          username: username,
-          fullName: fullName,
-          password: password,
-          role: selectedRole,
-          whatsapp: whatsapp.isEmpty ? null : whatsapp,
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error.toString().replaceFirst('StateError: ', '')),
+          ),
         );
+      }
+    }
+  }
 
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Karyawan berhasil didaftarkan.'),
-              backgroundColor: Color(0xFF18794E),
-            ),
-          );
-          _loadUsers();
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('$e'),
+  Future<void> _deleteUser(QueryRow user) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Hapus akun pengguna?'),
+        content: Text(
+          'Akun ${user.read<String>('full_name')} akan dihapus dari daftar dan tidak dapat login. Riwayat transaksi tetap disimpan.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFFB42318),
             ),
-          );
-        }
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Hapus akun'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      final actorId = ref.read(authNotifierProvider).userId;
+      if (actorId == null) throw StateError('Sesi pemilik sudah berakhir.');
+      final repository = await ref.read(repositoryFutureProvider.future);
+      await repository.deleteUser(
+        userId: user.read<int>('id'),
+        actorId: actorId,
+      );
+      await _loadUsers();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Akun berhasil dihapus. Riwayat transaksi tetap tersimpan.',
+            ),
+          ),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error.toString().replaceFirst('StateError: ', '')),
+          ),
+        );
       }
     }
   }
@@ -181,33 +356,24 @@ class _UserManagementViewState extends ConsumerState<UserManagementView> {
     return OwnerScaffold(
       title: 'Tim & Akses',
       onBack: () => context.go('/'),
-      actions: [
-        if (_tab == 0)
-          IconButton(
-            icon: const Icon(Icons.person_add_alt_1),
-            tooltip: 'Tambah Karyawan',
-            onPressed: _showAddUserDialog,
-          ),
-      ],
+      onAdd: _tab == 0 ? () => _showUserDialog() : null,
+      addLabel: 'Tambah akun',
       body: Column(
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
-            child: SegmentedButton<int>(
-              segments: const [
-                ButtonSegment(value: 0, label: Text('Anggota tim')),
-                ButtonSegment(value: 1, label: Text('Riwayat shift')),
-              ],
-              selected: {_tab},
-              onSelectionChanged: (value) => setState(() => _tab = value.first),
+            child: OwnerTabBar<int>(
+              tabs: const [(0, 'Anggota tim'), (1, 'Riwayat shift')],
+              selected: _tab,
+              onSelected: (value) => setState(() => _tab = value),
             ),
           ),
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : _tab == 0
-                    ? _buildUsersList()
-                    : _buildShiftList(),
+                ? _buildUsersList()
+                : _buildShiftList(),
           ),
         ],
       ),
@@ -219,104 +385,89 @@ class _UserManagementViewState extends ConsumerState<UserManagementView> {
         ? const OwnerEmptyState(
             icon: Icons.group_outlined,
             title: 'Belum ada anggota tim',
-            message: 'Tambahkan kasir atau pengawas untuk mengelola akses toko.',
+            message:
+                'Tambahkan kasir atau pengawas untuk mengelola akses toko.',
           )
-        : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
-                  itemCount: _users.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 10),
-                  itemBuilder: (context, index) {
-                    final user = _users[index];
-                    final username = user.read<String>('username');
-                    final fullName = user.read<String>('full_name');
-                    final role = user.read<String>('role_name');
-                    final whatsapp = user.read<String?>('whatsapp') ?? '-';
-                    final isActive = user.read<int>('is_active') == 1;
-
-                    return OwnerSurface(
-                        padding: const EdgeInsets.all(16),
-                        child: Row(
-                          children: [
-                            CircleAvatar(
-                              backgroundColor: role == 'OWNER'
-                                  ? const Color(0xFF006EAE)
-                                  : const Color(0xFF586575),
-                              foregroundColor: Colors.white,
-                              child: Text(
-                                fullName.isNotEmpty ? fullName[0].toUpperCase() : 'U',
-                                style: const TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+        : SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(12, 16, 12, 100),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: DataTable(
+                headingRowColor: WidgetStateProperty.all(
+                  const Color(0xFFEAF1F6),
+                ),
+                columns: const [
+                  DataColumn(label: Text('Nama')),
+                  DataColumn(label: Text('Username')),
+                  DataColumn(label: Text('Peran')),
+                  DataColumn(label: Text('WhatsApp')),
+                  DataColumn(label: Text('Status')),
+                  DataColumn(label: Text('Kelola akun')),
+                ],
+                rows: _users.map((user) {
+                  final active = user.read<int>('is_active') == 1;
+                  final isOwner = user.read<String>('role_name') == 'OWNER';
+                  return DataRow(
+                    cells: [
+                      DataCell(Text(user.read<String>('full_name'))),
+                      DataCell(Text('@${user.read<String>('username')}')),
+                      DataCell(
+                        Text(_roleLabel(user.read<String>('role_name'))),
+                      ),
+                      DataCell(Text(user.read<String?>('whatsapp') ?? '-')),
+                      DataCell(
+                        Text(
+                          active ? 'Aktif' : 'Nonaktif',
+                          style: TextStyle(
+                            color: active
+                                ? const Color(0xFF18794E)
+                                : const Color(0xFFB42318),
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      DataCell(
+                        isOwner
+                            ? const Text('Pemilik')
+                            : Wrap(
+                                spacing: 2,
                                 children: [
-                                  Text(
-                                    fullName,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 15,
-                                      color: Color(0xFF17212B),
-                                    ),
+                                  IconButton(
+                                    tooltip: 'Ubah akun',
+                                    icon: const Icon(Icons.edit_outlined),
+                                    onPressed: () =>
+                                        _showUserDialog(user: user),
                                   ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '@$username  •  WA: $whatsapp',
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Color(0xFF586575),
+                                  IconButton(
+                                    tooltip: active
+                                        ? 'Nonaktifkan akun'
+                                        : 'Aktifkan akun',
+                                    color: active
+                                        ? const Color(0xFFB42318)
+                                        : const Color(0xFF18794E),
+                                    icon: Icon(
+                                      active
+                                          ? Icons.person_off_outlined
+                                          : Icons.person_outline_rounded,
                                     ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                                    onPressed: () =>
+                                        _setUserActive(user, !active),
+                                  ),
+                                  IconButton(
+                                    tooltip: 'Hapus akun',
+                                    color: const Color(0xFFB42318),
+                                    icon: const Icon(Icons.delete_outline),
+                                    onPressed: () => _deleteUser(user),
                                   ),
                                 ],
                               ),
-                            ),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: role == 'OWNER'
-                                        ? const Color(0xFF006EAE)
-                                            .withValues(alpha: 0.1)
-                                        : const Color(0xFF18794E)
-                                            .withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    role,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                      color: role == 'OWNER'
-                                          ? const Color(0xFF006EAE)
-                                          : const Color(0xFF18794E),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  isActive ? 'Aktif' : 'Nonaktif',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: isActive
-                                        ? const Color(0xFF18794E)
-                                        : const Color(0xFFB42318),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                    );
-                  },
-                );
+                      ),
+                    ],
+                  );
+                }).toList(),
+              ),
+            ),
+          );
   }
 
   Widget _buildShiftList() {
@@ -327,54 +478,52 @@ class _UserManagementViewState extends ConsumerState<UserManagementView> {
         message: 'Shift kasir akan tercatat setelah kasir membuka operasional.',
       );
     }
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-      itemCount: _shifts.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 10),
-      itemBuilder: (context, index) {
-        final shift = _shifts[index];
-        final isOpen = shift.read<String>('status') == 'OPEN' &&
-            shift.read<String?>('closed_at') == null;
-        final openedAt = shift.read<String>('opened_at');
-        final closedAt = shift.read<String?>('closed_at');
-        return OwnerSurface(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      shift.read<String>('cashier_name'),
-                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(12, 16, 12, 32),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          headingRowColor: WidgetStateProperty.all(const Color(0xFFEAF1F6)),
+          columns: const [
+            DataColumn(label: Text('Kasir')),
+            DataColumn(label: Text('Dibuka')),
+            DataColumn(label: Text('Ditutup')),
+            DataColumn(label: Text('Status')),
+            DataColumn(label: Text('Modal awal'), numeric: true),
+            DataColumn(label: Text('Transaksi'), numeric: true),
+            DataColumn(label: Text('Penjualan'), numeric: true),
+          ],
+          rows: _shifts.map((shift) {
+            final open =
+                shift.read<String>('status') == 'OPEN' &&
+                shift.read<String?>('closed_at') == null;
+            final closed = shift.read<String?>('closed_at');
+            return DataRow(
+              cells: [
+                DataCell(Text(shift.read<String>('cashier_name'))),
+                DataCell(Text(_formatDate(shift.read<String>('opened_at')))),
+                DataCell(Text(closed == null ? '-' : _formatDate(closed))),
+                DataCell(
+                  Text(
+                    open ? 'Berjalan' : 'Selesai',
+                    style: TextStyle(
+                      color: open ? const Color(0xFF18794E) : ownerMuted,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
-                  _StatusChip(
-                    label: isOpen ? 'Sedang berjalan' : 'Selesai',
-                    active: isOpen,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Text('Buka: ${_formatDate(openedAt)}', style: const TextStyle(color: ownerMuted, fontSize: 12)),
-              Text(
-                closedAt == null ? 'Belum ditutup' : 'Tutup: ${_formatDate(closedAt)}',
-                style: const TextStyle(color: ownerMuted, fontSize: 12),
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 20,
-                runSpacing: 8,
-                children: [
-                  _ShiftValue(label: 'Penjualan', value: _currency.format(shift.read<int>('sales_total'))),
-                  _ShiftValue(label: 'Transaksi', value: '${shift.read<int>('sales_count')}'),
-                  _ShiftValue(label: 'Modal awal', value: _currency.format(shift.read<int>('opening_cash'))),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
+                ),
+                DataCell(
+                  Text(_currency.format(shift.read<int>('opening_cash'))),
+                ),
+                DataCell(Text('${shift.read<int>('sales_count')}')),
+                DataCell(
+                  Text(_currency.format(shift.read<int>('sales_total'))),
+                ),
+              ],
+            );
+          }).toList(),
+        ),
+      ),
     );
   }
 
@@ -382,38 +531,12 @@ class _UserManagementViewState extends ConsumerState<UserManagementView> {
     final date = DateTime.tryParse(value)?.toLocal();
     return date == null ? value : DateFormat('dd MMM yyyy, HH:mm').format(date);
   }
-}
 
-class _ShiftValue extends StatelessWidget {
-  const _ShiftValue({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: const TextStyle(color: ownerMuted, fontSize: 11)),
-          const SizedBox(height: 3),
-          Text(value, style: const TextStyle(color: ownerInk, fontWeight: FontWeight.w700)),
-        ],
-      );
-}
-
-class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.label, required this.active});
-
-  final String label;
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = active ? const Color(0xFF18794E) : ownerMuted;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(color: color.withValues(alpha: .09), borderRadius: BorderRadius.circular(30)),
-      child: Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
-    );
-  }
+  String _roleLabel(String role) => switch (role) {
+    'CASHIER' => 'Kasir',
+    'ADMIN' => 'Manajer',
+    'SUPERVISOR' => 'Supervisor Umum',
+    'OWNER' => 'Pemilik',
+    _ => role,
+  };
 }

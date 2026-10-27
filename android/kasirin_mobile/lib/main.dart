@@ -68,6 +68,11 @@ class _StartupSplashState extends State<_StartupSplash>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF101827),
+      appBar: AppBar(
+        title: const Text('Kasirin · Memulai Aplikasi'),
+        backgroundColor: const Color(0xFF101827),
+        foregroundColor: Colors.white,
+      ),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(32),

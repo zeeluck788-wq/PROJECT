@@ -8,7 +8,14 @@ import '../../providers.dart';
 import 'owner_widgets.dart';
 
 class PurchaseView extends ConsumerStatefulWidget {
-  const PurchaseView({super.key});
+  const PurchaseView({
+    this.openNewOrderOnLoad = false,
+    this.initialTab = 0,
+    super.key,
+  });
+
+  final bool openNewOrderOnLoad;
+  final int initialTab;
 
   @override
   ConsumerState<PurchaseView> createState() => _PurchaseViewState();
@@ -29,10 +36,13 @@ class _PurchaseViewState extends ConsumerState<PurchaseView> {
   @override
   void initState() {
     super.initState();
-    _loadData();
+    if (widget.initialTab >= 0 && widget.initialTab <= 2) {
+      _tab = widget.initialTab;
+    }
+    _loadData(openNewOrder: widget.openNewOrderOnLoad);
   }
 
-  Future<void> _loadData() async {
+  Future<void> _loadData({bool openNewOrder = false}) async {
     try {
       final repository = await ref.read(repositoryFutureProvider.future);
       final orders = await repository.getPurchaseOrders();
@@ -53,6 +63,11 @@ class _PurchaseViewState extends ConsumerState<PurchaseView> {
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+    if (openNewOrder && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _createOrder();
+      });
     }
   }
 
@@ -125,176 +140,72 @@ class _PurchaseViewState extends ConsumerState<PurchaseView> {
   }
 
   Future<void> _createOrder() async {
-    if (_suppliers.isEmpty) {
-      await _addSupplier();
-      if (_suppliers.isEmpty) return;
-    }
-    if (_products.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Tambahkan produk terlebih dahulu.')),
-      );
-      return;
-    }
-
-    final quantityController = TextEditingController(text: '1');
-    final costController = TextEditingController(
-      text: _products.first.read<int>('purchase_price').toString(),
-    );
-    final noteController = TextEditingController();
-    var supplierId = _suppliers.first.read<int>('id');
-    var productId = _products.first.read<int>('id');
-    final saved = await showDialog<bool>(
+    final draft = await showDialog<_PurchaseDraft>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Pesanan pembelian baru'),
-          content: SizedBox(
-            width: 440,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  DropdownButtonFormField<int>(
-                    initialValue: supplierId,
-                    isExpanded: true,
-                    decoration: const InputDecoration(labelText: 'Supplier'),
-                    items: _suppliers.map((supplier) {
-                      final id = supplier.read<int>('id');
-                      return DropdownMenuItem(
-                        value: id,
-                        child: Text(supplier.read<String>('name')),
-                      );
-                    }).toList(),
-                    onChanged: (value) {
-                      if (value != null) {
-                        setDialogState(() => supplierId = value);
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<int>(
-                    initialValue: productId,
-                    isExpanded: true,
-                    decoration: const InputDecoration(labelText: 'Produk'),
-                    items: _products.map((product) {
-                      final id = product.read<int>('id');
-                      return DropdownMenuItem(
-                        value: id,
-                        child: Text(
-                          '${product.read<String>('name')} · ${product.read<String>('sku')}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      );
-                    }).toList(),
-                    onChanged: (value) {
-                      if (value != null) {
-                        setDialogState(() => productId = value);
-                        final product = _products.firstWhere(
-                          (row) => row.read<int>('id') == value,
-                        );
-                        costController.text =
-                            product.read<int>('purchase_price').toString();
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: quantityController,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            labelText: 'Jumlah',
-                            suffixText: 'pcs',
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextField(
-                          controller: costController,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            labelText: 'Modal / pcs',
-                            prefixText: 'Rp ',
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: noteController,
-                    decoration: const InputDecoration(labelText: 'Catatan'),
-                  ),
-                  const SizedBox(height: 10),
-                  const Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'Pembayaran dicatat sebagai tempo 30 hari. Stok bertambah setelah pesanan diterima.',
-                      style: TextStyle(fontSize: 12, color: ownerMuted),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Batal'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Buat pesanan'),
-            ),
-          ],
-        ),
+      builder: (_) => _PurchaseDialog(
+        suppliers: _suppliers,
+        products: _products,
+        currency: _currency,
       ),
     );
-    if (saved != true || !mounted) {
-      quantityController.dispose();
-      costController.dispose();
-      noteController.dispose();
-      return;
-    }
+    if (draft == null || !mounted) return;
+
     try {
-      final quantity = int.tryParse(quantityController.text.trim());
-      final cost = int.tryParse(costController.text.replaceAll('.', '').trim());
-      if (quantity == null || cost == null) {
-        throw StateError('Jumlah dan harga modal harus berupa angka.');
-      }
       final auth = ref.read(authNotifierProvider);
       final actorId = auth.userId;
       if (actorId == null) throw StateError('Sesi pengguna sudah berakhir.');
-      final dueDate = DateTime.now()
-          .toUtc()
-          .add(const Duration(days: 30))
-          .toIso8601String()
-          .substring(0, 10);
       final repository = await ref.read(repositoryFutureProvider.future);
-      await repository.createPurchaseOrder(
-        supplierId: supplierId,
-        productId: productId,
-        quantity: quantity,
-        unitCost: cost,
+      await repository.completePurchase(
+        supplierId: draft.supplierId,
+        newSupplierName: draft.newSupplierName,
+        productId: draft.productId,
+        newProductName: draft.newProductName,
+        newProductSellingPrice: draft.newProductSellingPrice,
+        newProductMinimumStock: draft.newProductMinimumStock,
+        quantity: draft.quantity,
+        unitCost: draft.unitCost,
         actorId: actorId,
-        dueDate: dueDate,
-        notes: noteController.text,
+        paymentType: draft.paymentType,
+        downPaymentAmount: draft.downPaymentAmount,
+      );
+      await _loadData();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Pembelian berhasil disimpan dan stok diperbarui.'),
+          ),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Tidak dapat menyimpan pembelian: $error')),
+        );
+      }
+    }
+  }
+
+  Future<void> _editSupplier(QueryRow supplier) async {
+    final details = await showDialog<_SupplierDraft>(
+      context: context,
+      builder: (_) => _SupplierEditDialog(supplier: supplier),
+    );
+    if (details == null || !mounted) return;
+    try {
+      final repository = await ref.read(repositoryFutureProvider.future);
+      await repository.updateSupplier(
+        supplierId: supplier.read<int>('id'),
+        name: details.name,
+        phone: details.phone,
+        address: details.address,
       );
       await _loadData();
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Tidak dapat membuat pesanan: $error')),
+          SnackBar(content: Text('Gagal mengubah supplier: $error')),
         );
       }
-    } finally {
-      quantityController.dispose();
-      costController.dispose();
-      noteController.dispose();
     }
   }
 
@@ -311,16 +222,17 @@ class _PurchaseViewState extends ConsumerState<PurchaseView> {
       await _loadData();
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal menerima stok: $error')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Gagal menerima stok: $error')));
       }
     }
   }
 
   Future<void> _payOrder(QueryRow order) async {
     final amountController = TextEditingController(
-      text: (order.read<int>('subtotal') - order.read<int>('paid_amount')).toString(),
+      text: (order.read<int>('subtotal') - order.read<int>('paid_amount'))
+          .toString(),
     );
     final saved = await showDialog<bool>(
       context: context,
@@ -352,7 +264,9 @@ class _PurchaseViewState extends ConsumerState<PurchaseView> {
       return;
     }
     try {
-      final amount = int.tryParse(amountController.text.replaceAll('.', '').trim());
+      final amount = int.tryParse(
+        amountController.text.replaceAll('.', '').trim(),
+      );
       if (amount == null) throw StateError('Masukkan nominal yang valid.');
       final actorId = ref.read(authNotifierProvider).userId;
       if (actorId == null) throw StateError('Sesi pengguna sudah berakhir.');
@@ -385,99 +299,92 @@ class _PurchaseViewState extends ConsumerState<PurchaseView> {
         icon: onlyOutstanding
             ? Icons.account_balance_wallet_outlined
             : Icons.local_shipping_outlined,
-        title: onlyOutstanding ? 'Tidak ada tagihan terbuka' : 'Belum ada pesanan',
-        message: onlyOutstanding
-            ? 'Tagihan supplier akan muncul di sini.'
-            : 'Buat pesanan pembelian untuk mencatat barang yang akan diterima.',
-        action: onlyOutstanding
-            ? null
-            : FilledButton.icon(
-                onPressed: _createOrder,
-                icon: const Icon(Icons.add_rounded),
-                label: const Text('Buat pesanan'),
-              ),
+        title: onlyOutstanding
+            ? 'Tidak ada tagihan terbuka'
+            : 'Belum ada pesanan',
+        message: onlyOutstanding ? 'Tagihan supplier akan muncul di sini.' : 'Buat pesanan pembelian untuk mencatat barang yang akan diterima.',
       );
     }
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-      itemCount: orders.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 10),
-      itemBuilder: (context, index) {
-        final order = orders[index];
-        final isDraft = order.read<String>('status') == 'DRAFT';
-        final subtotal = order.read<int>('subtotal');
-        final paid = order.read<int>('paid_amount');
-        final outstanding = subtotal - paid;
-        return OwnerSurface(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 100),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          headingRowColor: WidgetStateProperty.all(const Color(0xFFEAF1F6)),
+          columns: const [
+            DataColumn(label: Text('No. Pesanan')),
+            DataColumn(label: Text('Supplier')),
+            DataColumn(label: Text('Barang')),
+            DataColumn(label: Text('Status')),
+            DataColumn(label: Text('Total'), numeric: true),
+            DataColumn(label: Text('Terbayar'), numeric: true),
+            DataColumn(label: Text('Sisa'), numeric: true),
+            DataColumn(label: Text('Aksi')),
+          ],
+          rows: orders.map((order) {
+            final isDraft = order.read<String>('status') == 'DRAFT';
+            final subtotal = order.read<int>('subtotal');
+            final paid = order.read<int>('paid_amount');
+            final outstanding = subtotal - paid;
+            return DataRow(
+              cells: [
+                DataCell(Text(order.read<String>('order_no'))),
+                DataCell(Text(order.read<String>('supplier_name'))),
+                DataCell(
+                  SizedBox(
+                    width: 190,
                     child: Text(
-                      order.read<String>('supplier_name'),
-                      style: const TextStyle(
-                        color: ownerInk,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                      ),
+                      order.read<String?>('item_summary') ?? 'Produk',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                ),
+                DataCell(
                   _StatusChip(
                     label: isDraft ? 'Menunggu barang' : 'Diterima',
-                    color: isDraft ? const Color(0xFFB7791F) : const Color(0xFF18794E),
+                    color: isDraft
+                        ? const Color(0xFFB7791F)
+                        : const Color(0xFF18794E),
                   ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '${order.read<String>('order_no')} · ${order.read<String>('item_summary') ?? 'Produk'}',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: ownerMuted, fontSize: 12),
-              ),
-              const SizedBox(height: 14),
-              Wrap(
-                spacing: 20,
-                runSpacing: 8,
-                children: [
-                  _OrderValue(label: 'Total pesanan', value: _currency.format(subtotal)),
-                  _OrderValue(
-                    label: outstanding == 0 ? 'Pembayaran' : 'Sisa tagihan',
-                    value: outstanding == 0 ? 'Lunas' : _currency.format(outstanding),
-                    valueColor: outstanding == 0 ? const Color(0xFF18794E) : const Color(0xFFB7791F),
+                ),
+                DataCell(Text(_currency.format(subtotal))),
+                DataCell(Text(_currency.format(paid))),
+                DataCell(
+                  Text(
+                    _currency.format(outstanding),
+                    style: TextStyle(
+                      color: outstanding == 0
+                          ? const Color(0xFF18794E)
+                          : const Color(0xFFB7791F),
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                ],
-              ),
-              if (isDraft || outstanding > 0) ...[
-                const SizedBox(height: 12),
-                const Divider(height: 1),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    if (isDraft)
-                      OutlinedButton.icon(
-                        onPressed: () => _receiveOrder(order),
-                        icon: const Icon(Icons.inventory_2_outlined, size: 18),
-                        label: const Text('Terima stok'),
-                      ),
-                    if (!isDraft && outstanding > 0)
-                      FilledButton.tonalIcon(
-                        onPressed: () => _payOrder(order),
-                        icon: const Icon(Icons.payments_outlined, size: 18),
-                        label: const Text('Catat pembayaran'),
-                      ),
-                  ],
+                ),
+                DataCell(
+                  Wrap(
+                    spacing: 4,
+                    children: [
+                      if (isDraft)
+                        IconButton(
+                          tooltip: 'Terima stok',
+                          icon: const Icon(Icons.inventory_2_outlined),
+                          onPressed: () => _receiveOrder(order),
+                        ),
+                      if (!isDraft && outstanding > 0)
+                        IconButton(
+                          tooltip: 'Catat pembayaran',
+                          icon: const Icon(Icons.payments_outlined),
+                          onPressed: () => _payOrder(order),
+                        ),
+                    ],
+                  ),
                 ),
               ],
-            ],
-          ),
-        );
-      },
+            );
+          }).toList(),
+        ),
+      ),
     );
   }
 
@@ -486,52 +393,53 @@ class _PurchaseViewState extends ConsumerState<PurchaseView> {
       return OwnerEmptyState(
         icon: Icons.business_outlined,
         title: 'Belum ada supplier',
-        message: 'Simpan data pemasok untuk menggunakannya pada pesanan pembelian.',
-        action: FilledButton.icon(
-          onPressed: _addSupplier,
-          icon: const Icon(Icons.add_rounded),
-          label: const Text('Tambah supplier'),
-        ),
+        message:
+            'Simpan data pemasok untuk menggunakannya pada pesanan pembelian.',
       );
     }
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-      itemCount: _suppliers.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 10),
-      itemBuilder: (context, index) {
-        final supplier = _suppliers[index];
-        return OwnerSurface(
-          child: Row(
-            children: [
-              Container(
-                width: 46,
-                height: 46,
-                decoration: BoxDecoration(
-                  color: ownerBlue.withValues(alpha: .08),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Icon(Icons.business_rounded, color: ownerBlue),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(supplier.read<String>('name'),
-                        style: const TextStyle(fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 3),
-                    Text(
-                      supplier.read<String?>('phone') ?? 'Nomor telepon belum diisi',
-                      style: const TextStyle(color: ownerMuted, fontSize: 12),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 100),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          headingRowColor: WidgetStateProperty.all(const Color(0xFFEAF1F6)),
+          columns: const [
+            DataColumn(label: Text('Kode')),
+            DataColumn(label: Text('Nama supplier')),
+            DataColumn(label: Text('Telepon')),
+            DataColumn(label: Text('Alamat')),
+            DataColumn(label: Text('Aksi')),
+          ],
+          rows: _suppliers
+              .map(
+                (supplier) => DataRow(
+                  cells: [
+                    DataCell(Text(supplier.read<String>('code'))),
+                    DataCell(Text(supplier.read<String>('name'))),
+                    DataCell(Text(supplier.read<String?>('phone') ?? '-')),
+                    DataCell(
+                      SizedBox(
+                        width: 240,
+                        child: Text(
+                          supplier.read<String?>('address') ?? '-',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                    DataCell(
+                      TextButton.icon(
+                        onPressed: () => _editSupplier(supplier),
+                        icon: const Icon(Icons.edit_outlined, size: 18),
+                        label: const Text('Edit Supplier'),
+                      ),
                     ),
                   ],
                 ),
-              ),
-              const Icon(Icons.chevron_right_rounded, color: ownerMuted),
-            ],
-          ),
-        );
-      },
+              )
+              .toList(),
+        ),
+      ),
     );
   }
 
@@ -540,71 +448,33 @@ class _PurchaseViewState extends ConsumerState<PurchaseView> {
     return OwnerScaffold(
       title: 'Pembelian & Supplier',
       onBack: () => context.go('/'),
-      actions: [
-        if (_tab == 0)
-          IconButton(
-            tooltip: 'Buat pesanan',
-            onPressed: _createOrder,
-            icon: const Icon(Icons.add_rounded),
-          ),
-        if (_tab == 1)
-          IconButton(
-            tooltip: 'Tambah supplier',
-            onPressed: _addSupplier,
-            icon: const Icon(Icons.person_add_alt_rounded),
-          ),
-      ],
+      onAdd: _tab == 0
+          ? _createOrder
+          : _tab == 1
+          ? _addSupplier
+          : null,
+      addLabel: _tab == 1 ? 'Tambah supplier' : 'Buat pesanan',
       body: Column(
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
-            child: SegmentedButton<int>(
-              segments: const [
-                ButtonSegment(value: 0, label: Text('Pesanan')),
-                ButtonSegment(value: 1, label: Text('Supplier')),
-                ButtonSegment(value: 2, label: Text('Tagihan')),
-              ],
-              selected: {_tab},
-              onSelectionChanged: (selection) =>
-                  setState(() => _tab = selection.first),
+            child: OwnerTabBar<int>(
+              tabs: const [(0, 'Pesanan'), (1, 'Supplier'), (2, 'Tagihan')],
+              selected: _tab,
+              onSelected: (selection) => setState(() => _tab = selection),
             ),
           ),
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : _tab == 1
-                    ? _buildSuppliers()
-                    : _buildOrders(onlyOutstanding: _tab == 2),
+                ? _buildSuppliers()
+                : _buildOrders(onlyOutstanding: _tab == 2),
           ),
         ],
       ),
     );
   }
-}
-
-class _OrderValue extends StatelessWidget {
-  const _OrderValue({required this.label, required this.value, this.valueColor});
-
-  final String label;
-  final String value;
-  final Color? valueColor;
-
-  @override
-  Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: const TextStyle(color: ownerMuted, fontSize: 11)),
-          const SizedBox(height: 3),
-          Text(
-            value,
-            style: TextStyle(
-              color: valueColor ?? ownerInk,
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      );
 }
 
 class _StatusChip extends StatelessWidget {
@@ -615,14 +485,497 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: .09),
-          borderRadius: BorderRadius.circular(30),
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: .09),
+      borderRadius: BorderRadius.circular(30),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700),
+    ),
+  );
+}
+
+typedef _PurchaseDraft = ({
+  int? supplierId,
+  String? newSupplierName,
+  int? productId,
+  String? newProductName,
+  int? newProductSellingPrice,
+  int newProductMinimumStock,
+  int quantity,
+  int unitCost,
+  String paymentType,
+  int downPaymentAmount,
+});
+
+typedef _SupplierDraft = ({String name, String? phone, String? address});
+
+class _PurchaseDialog extends StatefulWidget {
+  const _PurchaseDialog({
+    required this.suppliers,
+    required this.products,
+    required this.currency,
+  });
+
+  final List<QueryRow> suppliers;
+  final List<QueryRow> products;
+  final NumberFormat currency;
+
+  @override
+  State<_PurchaseDialog> createState() => _PurchaseDialogState();
+}
+
+class _PurchaseDialogState extends State<_PurchaseDialog> {
+  static const _newSupplier = -1;
+  static const _newProduct = -1;
+
+  late int _supplierSelection;
+  late int _productSelection;
+  late final TextEditingController _newSupplierNameController;
+  late final TextEditingController _newProductNameController;
+  late final TextEditingController _sellingPriceController;
+  late final TextEditingController _minimumStockController;
+  late final TextEditingController _quantityController;
+  late final TextEditingController _unitCostController;
+  late final TextEditingController _downPaymentController;
+  String _paymentType = 'CASH';
+  String? _errorMessage;
+
+  bool get _isNewSupplier => _supplierSelection == _newSupplier;
+  bool get _isNewProduct => _productSelection == _newProduct;
+
+  List<QueryRow> get _availableProducts {
+    if (_isNewSupplier) return [];
+    return widget.products.where((product) {
+      final supplierId = product.read<int?>('supplier_id');
+      return supplierId == null || supplierId == _supplierSelection;
+    }).toList();
+  }
+
+  int get _quantity => int.tryParse(_quantityController.text.trim()) ?? 0;
+  int get _unitCost => _parseMoney(_unitCostController.text);
+  int get _total => _quantity * _unitCost;
+  int get _downPayment => _parseMoney(_downPaymentController.text);
+
+  int _parseMoney(String value) =>
+      int.tryParse(value.replaceAll('.', '').replaceAll(' ', '').trim()) ?? 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _supplierSelection = widget.suppliers.isEmpty
+        ? _newSupplier
+        : widget.suppliers.first.read<int>('id');
+    final initialProducts = _availableProducts;
+    _productSelection = initialProducts.isEmpty
+        ? _newProduct
+        : initialProducts.first.read<int>('id');
+    _newSupplierNameController = TextEditingController();
+    _newProductNameController = TextEditingController();
+    _sellingPriceController = TextEditingController();
+    _minimumStockController = TextEditingController(text: '5');
+    _quantityController = TextEditingController(text: '1');
+    _unitCostController = TextEditingController(
+      text: initialProducts.isEmpty
+          ? ''
+          : '${initialProducts.first.read<int>('purchase_price')}',
+    );
+    _downPaymentController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _newSupplierNameController.dispose();
+    _newProductNameController.dispose();
+    _sellingPriceController.dispose();
+    _minimumStockController.dispose();
+    _quantityController.dispose();
+    _unitCostController.dispose();
+    _downPaymentController.dispose();
+    super.dispose();
+  }
+
+  void _selectSupplier(int supplierId) {
+    setState(() {
+      _supplierSelection = supplierId;
+      final products = _availableProducts;
+      _productSelection = products.isEmpty
+          ? _newProduct
+          : products.first.read<int>('id');
+      _unitCostController.text = products.isEmpty
+          ? ''
+          : '${products.first.read<int>('purchase_price')}';
+      _errorMessage = null;
+    });
+  }
+
+  void _selectProduct(int productId) {
+    setState(() {
+      _productSelection = productId;
+      if (productId != _newProduct) {
+        final product = _availableProducts.firstWhere(
+          (row) => row.read<int>('id') == productId,
+        );
+        _unitCostController.text = '${product.read<int>('purchase_price')}';
+      } else {
+        _unitCostController.clear();
+      }
+      _errorMessage = null;
+    });
+  }
+
+  void _submit() {
+    final quantity = _quantity;
+    final unitCost = _unitCost;
+    final total = quantity * unitCost;
+    final sellingPrice = _parseMoney(_sellingPriceController.text);
+    final minimumStock = int.tryParse(_minimumStockController.text.trim()) ?? 0;
+    String? error;
+
+    if (_isNewSupplier && _newSupplierNameController.text.trim().isEmpty) {
+      error = 'Nama supplier baru wajib diisi.';
+    } else if (_isNewProduct && _newProductNameController.text.trim().isEmpty) {
+      error = 'Nama produk baru wajib diisi.';
+    } else if (_isNewProduct && sellingPrice <= 0) {
+      error = 'Harga jual produk baru harus lebih dari 0.';
+    } else if (quantity <= 0) {
+      error = 'Jumlah pembelian minimal 1.';
+    } else if (unitCost <= 0) {
+      error = 'Harga modal per produk harus lebih dari 0.';
+    } else if (minimumStock < 0) {
+      error = 'Stok minimum tidak boleh negatif.';
+    } else if (_paymentType == 'DP' &&
+        (_downPayment <= 0 || _downPayment >= total)) {
+      error = 'Nominal DP harus lebih dari 0 dan kurang dari total.';
+    }
+
+    if (error != null) {
+      setState(() => _errorMessage = error);
+      return;
+    }
+
+    Navigator.pop<_PurchaseDraft>(context, (
+      supplierId: _isNewSupplier ? null : _supplierSelection,
+      newSupplierName: _isNewSupplier
+          ? _newSupplierNameController.text.trim()
+          : null,
+      productId: _isNewProduct ? null : _productSelection,
+      newProductName: _isNewProduct
+          ? _newProductNameController.text.trim()
+          : null,
+      newProductSellingPrice: _isNewProduct ? sellingPrice : null,
+      newProductMinimumStock: _isNewProduct ? minimumStock : 5,
+      quantity: quantity,
+      unitCost: unitCost,
+      paymentType: _paymentType,
+      downPaymentAmount: _paymentType == 'DP' ? _downPayment : 0,
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final availableProducts = _availableProducts;
+
+    return AlertDialog(
+      title: const Text('Pembelian'),
+      content: SizedBox(
+        width: 460,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * .72,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                DropdownButtonFormField<int>(
+                  initialValue: _supplierSelection,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Supplier'),
+                  items: [
+                    ...widget.suppliers.map(
+                      (supplier) => DropdownMenuItem(
+                        value: supplier.read<int>('id'),
+                        child: Text(supplier.read<String>('name')),
+                      ),
+                    ),
+                    const DropdownMenuItem(
+                      value: _newSupplier,
+                      child: Text('Supplier Baru'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) _selectSupplier(value);
+                  },
+                ),
+                if (_isNewSupplier) ...[
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _newSupplierNameController,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(
+                      labelText: 'Nama supplier baru *',
+                      helperText: 'Nomor WhatsApp dan alamat dapat dilengkapi di tab Supplier.',
+                    ),
+                    onChanged: (_) => setState(() => _errorMessage = null),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                DropdownButtonFormField<int>(
+                  initialValue: _productSelection,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Produk'),
+                  items: [
+                    ...availableProducts.map(
+                      (product) => DropdownMenuItem(
+                        value: product.read<int>('id'),
+                        child: Text(
+                          '${product.read<String>('name')} · ${product.read<String>('sku')}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                    const DropdownMenuItem(
+                      value: _newProduct,
+                      child: Text('Produk Baru'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) _selectProduct(value);
+                  },
+                ),
+                if (_isNewProduct) ...[
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _newProductNameController,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(
+                      labelText: 'Nama produk baru *',
+                    ),
+                    onChanged: (_) => setState(() => _errorMessage = null),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _sellingPriceController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Harga jual per pcs *',
+                      prefixText: 'Rp ',
+                    ),
+                    onChanged: (_) => setState(() => _errorMessage = null),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _minimumStockController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Stok minimum',
+                      suffixText: 'pcs',
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _quantityController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Jumlah beli',
+                          suffixText: 'pcs',
+                        ),
+                        onChanged: (_) => setState(() => _errorMessage = null),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextField(
+                        controller: _unitCostController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Modal / pcs',
+                          prefixText: 'Rp ',
+                        ),
+                        onChanged: (_) => setState(() => _errorMessage = null),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: _paymentType,
+                  decoration: const InputDecoration(labelText: 'Pembayaran'),
+                  items: const [
+                    DropdownMenuItem(value: 'CASH', child: Text('Tunai')),
+                    DropdownMenuItem(value: 'TEMPO', child: Text('Tempo')),
+                    DropdownMenuItem(value: 'DP', child: Text('DP')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() {
+                        _paymentType = value;
+                        _errorMessage = null;
+                      });
+                    }
+                  },
+                ),
+                const SizedBox(height: 12),
+                if (_paymentType == 'DP') ...[
+                  TextField(
+                    controller: _downPaymentController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Nominal DP',
+                      prefixText: 'Rp ',
+                    ),
+                    onChanged: (_) => setState(() => _errorMessage = null),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Sisa pembayaran'),
+                      Text(
+                        widget.currency.format(
+                          (_total - _downPayment).clamp(0, _total),
+                        ),
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Total pembelian'),
+                    Text(
+                      widget.currency.format(_total),
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                ),
+                if (_errorMessage != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    _errorMessage!,
+                    style: const TextStyle(color: Color(0xFFB42318)),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ),
-        child: Text(
-          label,
-          style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Batal'),
         ),
-      );
+        FilledButton(onPressed: _submit, child: const Text('Simpan Pembelian')),
+      ],
+    );
+  }
+}
+
+class _SupplierEditDialog extends StatefulWidget {
+  const _SupplierEditDialog({required this.supplier});
+
+  final QueryRow supplier;
+
+  @override
+  State<_SupplierEditDialog> createState() => _SupplierEditDialogState();
+}
+
+class _SupplierEditDialogState extends State<_SupplierEditDialog> {
+  late final TextEditingController _nameController;
+  late final TextEditingController _phoneController;
+  late final TextEditingController _addressController;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(
+      text: widget.supplier.read<String>('name'),
+    );
+    _phoneController = TextEditingController(
+      text: widget.supplier.read<String?>('phone') ?? '',
+    );
+    _addressController = TextEditingController(
+      text: widget.supplier.read<String?>('address') ?? '',
+    );
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _phoneController.dispose();
+    _addressController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final name = _nameController.text.trim();
+    if (name.isEmpty) {
+      setState(() => _errorMessage = 'Nama supplier wajib diisi.');
+      return;
+    }
+    Navigator.pop<_SupplierDraft>(context, (
+      name: name,
+      phone: _phoneController.text.trim(),
+      address: _addressController.text.trim(),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Edit Supplier'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _nameController,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(labelText: 'Nama supplier *'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _phoneController,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(labelText: 'Nomor WhatsApp'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _addressController,
+              minLines: 2,
+              maxLines: 3,
+              decoration: const InputDecoration(labelText: 'Alamat'),
+            ),
+            if (_errorMessage != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                _errorMessage!,
+                style: const TextStyle(color: Color(0xFFB42318)),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Batal'),
+        ),
+        FilledButton(onPressed: _submit, child: const Text('Simpan')),
+      ],
+    );
+  }
 }
